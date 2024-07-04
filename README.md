@@ -23,7 +23,7 @@ Bamdam was heavily inspired by [metaDMG](https://github.com/metaDMG-dev/metaDMG-
 
 Just download this Github repo, make sure you have the python and R libraries installed (they should be pretty standard) and run it.
 ```sh
-git clone https://github.com/bdesanctis/bamdam
+git clone https://github.com/bdesanctis/bamdam.git
 ```
 
 ## Main Script
