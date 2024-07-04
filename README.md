@@ -89,8 +89,8 @@ python BamDam.py \
 - **TaxNodeID**: The tax node ID from the lca file.
 - **"TaxName"**: The tax name rom the lca file.
 - **"TotalReads"**: The number of reads assigned to that node or underneath.
-- **"PMDsover2"**: The number of read assigned that node or underneath with mean PMD scores over 2 (where the mean is over the alignments of that read, since a PMD score is computed per alignment).
-- **"PMDSover4"**: The number of read assigned that node or underneath with mean PMD scores over 4.
+- **"PMDsover2"**: The number of reads assigned to that node or underneath with mean PMD scores over 2 (where the mean is over the alignments of that read, since a PMD score is computed per alignment).
+- **"PMDSover4"**: The number of reads assigned to that node or underneath with mean PMD scores over 4.
 - **"Damaged+1"**: The number of reads assigned to that node or underneath where every alignment of that read had a C->T on the 5' (+1) position.
 - **"Damaged-1"**: The number of reads assigned to that node or underneath where every alignment of that read had a C->T if single stranded, or a G->A if double stranded, on the 3' (-1) position.
 - **"TotalAlignments"**: Sum of the number of alignments for all the reads assigned to that node or underneath.
