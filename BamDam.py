@@ -763,19 +763,6 @@ python BamDam4.py \
     --other_lca_keywords Eukaryota
 '''
 
-# 
-in_lca = "/Users/bianca/Dropbox/Documents/academic/postdoc_durbin/betadmg/data/LV7001882898-LV7005224373-CGG3-012108.lca"
-out_lca = "/Users/bianca/Dropbox/Documents/academic/postdoc_durbin/betadmg/data/LV7001882898-LV7005224373-CGG3-012108.shortened.lca"
-in_bam = "/Users/bianca/Dropbox/Documents/academic/postdoc_durbin/betadmg/data/LV7001882898-LV7005224373-CGG3-012108.sort.bam"
-out_bam = "/Users/bianca/Dropbox/Documents/academic/postdoc_durbin/betadmg/data/LV7001882898-LV7005224373-CGG3-012108.shortened.bam"
-out_stats = "/Users/bianca/Dropbox/Documents/academic/postdoc_durbin/betadmg/data/LV7001882898-LV7005224373-CGG3-012108.stats.txt"
-out_subs = "/Users/bianca/Dropbox/Documents/academic/postdoc_durbin/betadmg/data/LV7001882898-LV7005224373-CGG3-012108.subs.txt"
-stranded = "ds"
-mincount = "5"
-upto = "family"
-minsim = 0.95
-other_lca_keywords = ["Eukaryota"]
-lcaheaderlines = 2
 
 # and then 
 # ./PlotDamage.R -f "/Users/bianca/Dropbox/Documents/academic/postdoc_durbin/betadmg/data/LV7001882898-LV7005224373-CGG3-012108.subs.txt" -t "48230" -o "dryas.png" -s "ds"
