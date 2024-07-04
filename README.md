@@ -52,7 +52,7 @@ options:
 --k K: Value of k for kmer complexity calculations (default: 5)
 --upto UPTO: Keep nodes up to and including this tax threshold, use root to disable (default: family)
 --lcaheaderlines LCAHEADERLINES: Number of header lines in input LCA file (default: 0)
---minsim MINSIM: Minimum similarity to reference to keep a read (default: 0.95)
+--minsim MINSIM: Minimum similarity to reference to keep a read. This should be the same as your ngslca minimum similarity! (default: 0.95)
 --keep_keywords KEEP_KEYWORDS [KEEP_KEYWORDS ...]: Other keyword(s) in LCA file for filtering to keep, e.g. Eukaryota (default: none)
 --exclude_keywords EXCLUDE_KEYWORDS [KEEP_KEYWORDS ...]: Other keyword(s) in LCA file for filtering to delete (default Hominidae) - NOT IMPLEMENTED YET
 --exclude_keyword_file EXCLUDE_KEYWORD_FILE: Text file containing list of keywords or tax paths to remove in LCA file, one on each line - NOT IMPLEMENTED YET
