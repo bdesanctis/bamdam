@@ -96,8 +96,8 @@ python BamDam.py \
 - **"TotalAlignments"**: Sum of the number of alignments for all the reads assigned to that node or underneath.
 - **"MeanLength"**: The mean length of the reads assigned to that node or underneath.
 - **"ANI"**: Average nucleotide identity of the reads assigned to that node or underneath. 
-- **"PerReadKmerGI"**: Mean k-mer based Gini index, where the mean is over the reads assigned to that node or underneath. This is like a per-read complexity metric (are there many of the same k-mers in each read?). Ranges from 0 to 1. Lower numbers are better.
-- **"ReadSetKmerGI"**: Read-set k-mer based Gini Index. This is like a per-read-set complexity metric (do the k-mers in all of these reads look like each other?). Ranges from 0 to 1. Lower numbers are better.
+- **"PerReadKmerGI"**: Mean k-mer based Gini index, where the mean is over the reads assigned to that node or underneath. This is like a per-read complexity metric (are there many of the same k-mers in each read?). Ranges from 0 to 1. Lower numbers are better. If this number is substantially bigger for one node of interest than others, consider looking more carefully at the actual reads.
+- **"ReadSetKmerGI"**: Read-set k-mer based Gini Index. This is like a per-read-set complexity metric (do the k-mers in all of these reads look like each other?). Ranges from 0 to 1. Lower numbers are better. If this number is substantially bigger for one node of interest than others, consider looking more carefully at the actual reads.
 - **"AvgGC"**: Average GC content of the reads assigned to that node or underneath. 
 - **"taxpath"**: The taxonomic path from the lca file.
 
