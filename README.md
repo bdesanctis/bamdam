@@ -21,6 +21,8 @@ git clone https://github.com/bdesanctis/bamdam
 
 ## Main Script
 
+Input: Bam and LCA files. Output: Stats and subs files.
+
 The main script BamDam.py will:
 1. Shorten the LCA file to only nodes which are equal to or below your tax threshold, meet your minimum read count (or are below nodes which meet your minimum read count). This is not implemented just yet, but soon I will add the option to include all lines with a user-defined list of strings (such as "Eukaryota"), and optionally exclude all lines with a user-defined list of strings (such as "Homo sapiens, Galus Galus"), or with a tax node ID.
 2. Shorten the bam file to include only reads which appear in the newly shortened LCA file. This can make 100-1000x or even more difference in the size of a bam file after typical ancient eDNA mapping steps. It will also annotate the new bam file with PMD scores as in PMDTools (in the DS:Z field).
