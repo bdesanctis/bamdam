@@ -13,7 +13,7 @@ This pipeline and software is not appropriate for metabarcoding data.
 - [Main Script: BamDam.py](#main-script)
 - [Explanation of the Output Stats File Columns](#explanation-of-the-output-stats-file-columns)
 - [Plotting Script](#plotting-script)
-- [How do I get the point where I can use bamdam?][#how-to-get-to-the-point-where-i-can-use-bamdam]
+- [Steps before bamdam](#steps-before-bamdam)
 - [Coming Soon](#coming-soon)
 - [License](#license)
 
@@ -131,7 +131,7 @@ Options:
 Example plot (this one has a lot of reads contributing to it, they will generally be noisier):
 ![Damage plot of Dryas](https://github.com/bdesanctis/bamdam/blob/main/dryas.png)
 
-## How do I get the point where I can use bamdam?
+## Steps before bamdam
 
 Still gotta write a paragraph here about mapping to reference databases, where to find taxonomy files, ngslca etc.
 
