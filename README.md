@@ -121,6 +121,9 @@ Options:
                 Show this help message and exit
 ```
 
+Example plot (this one has a lot of reads contributing to it, they will generally be noisier):
+![Damage plot of Dryas](https://github.com/bdesanctis/bamdam/blob/main/dryas.png)
+
 ## Coming soon
 
 Aka my to do list :). Please let me know if you have requests, or really like any of these ideas.
