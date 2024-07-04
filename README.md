@@ -4,7 +4,7 @@
 
 Written by Bianca De Sanctis in July 2024. Please contact me with any issues, unexpected behavior, or requests! I want to improve this software! bddesanctis@gmail.com
 
-Welcome to bamdam! The goal of this toolkit is to provide functionality after shotgun sequencing aeDNA reads have been mapped to a reference database and run through ngsLCA using the reference database taxonomy to obtain a .lca file. The main program is BamDam.py, with additional plotting functionality in extra R scripts.
+Welcome to bamdam! The goal of this toolkit is to provide functionality after shotgun sequencing aeDNA reads have been mapped to a reference database and run through ngsLCA using the reference database taxonomy to obtain a .lca file. Storing these giant bams immediately post-mapping is annoying because they can be huge, so the first point of bamdam is to write (much) smaller versions that still include all the relevant information. The second point of bamdam is to compute a ton of read set metrics to determine if a taxonomic node looks damaged or "real". There are also associated extra scripts for plotting functionality and (soon) quickly extracting reads from a fq or bam belonging to a specific tax id(s).
 
 This pipeline and software is not appropriate for metabarcoding data.
 
