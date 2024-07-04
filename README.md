@@ -1,6 +1,6 @@
 # bamdam: A toolkit for ancient environmental DNA shotgun sequencing data
 
-Written by Bianca De Sanctis in July 2024. Please contact me with any issues or requests! I want to improve this software! bddesanctis@gmail.com
+Written by Bianca De Sanctis in July 2024. Please contact me with any issues, unexpected behavior, or requests! I want to improve this software! bddesanctis@gmail.com
 
 Welcome to bamdam! The goal of this toolkit is to provide functionality after shotgun sequencing aeDNA reads have been mapped to a reference database and run through ngsLCA. The main program is BamDam.py, with additional plotting functionality in extra R scripts.
 
