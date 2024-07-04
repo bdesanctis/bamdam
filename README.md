@@ -8,7 +8,7 @@ Welcome to bamdam! The goal of this toolkit is to provide functionality after sh
 
 This pipeline and software is not appropriate for metabarcoding data.
 
-Bamdam was heavily inspired by [metaDMG](https://github.com/metaDMG-dev/metaDMG-cpp) and [filterBAM](https://github.com/genomewalker/bam-filter). It is not particularly optimized for speed, and doesn't thread yet, but it can do a 40GB bam in an hour on my laptop and that feels sufficient to me for now - let me know if it's not for you.
+Bamdam was heavily inspired by [metaDMG](https://github.com/metaDMG-dev/metaDMG-cpp) and [filterBAM](https://github.com/genomewalker/bam-filter). It is not particularly optimized for speed, and doesn't thread yet, but it can do a 40GB bam in an hour on my laptop and that feels sufficient to me for now - let me know if it's not for you. I could thread it.
 
 ## Table of Contents
 - [Installation](#installation)
