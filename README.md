@@ -1,4 +1,4 @@
-# bamdam: A post-taxonomy-classification toolkit for ancient environmental DNA capture or shotgun sequencing data
+# bamdam: A post-mapping toolkit for ancient environmental DNA capture or shotgun sequencing data
 
 Written by Bianca De Sanctis in July 2024. Please contact me with any issues, unexpected behavior, or requests! I want to improve this software! bddesanctis@gmail.com
 
