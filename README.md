@@ -28,7 +28,7 @@ git clone https://github.com/bdesanctis/bamdam.git
 
 ## Main Script
 
-Input: Bam and LCA files. Output: Stats and subs files.
+Input: Bam and LCA files. Output: Shortened bam, shortened lca, stats and subs files.
 
 The main script BamDam.py will:
 1. Shorten the LCA file to only nodes which are equal to or below your tax threshold, meet your minimum read count (or are below nodes which meet your minimum read count). This is not implemented just yet, but soon I will add the option to include all lines with a user-defined list of strings (such as "Eukaryota"), and optionally exclude all lines with a user-defined list of strings (such as "Homo sapiens, Galus Galus"), or with a tax node ID.
