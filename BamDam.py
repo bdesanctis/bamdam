@@ -14,7 +14,7 @@ except ImportError:
     pass  # tqdm is not available . it's not necessary, just nice for progress bars 
 
 
-def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,lcaheaderlines,other_lca_keywords):
+def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,lcaheaderlines,exclude_keywords):
 
     print("\nWriting a filtered LCA file...")
 
@@ -26,8 +26,10 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,lcaheader
         for _ in range(numheaderlines):
             next(file) 
         for line in file:
-            if upto in line: 
-                if not other_lca_keywords or all(keyword in line for keyword in other_lca_keywords):                        
+            if upto in line:
+                if any(keyword in line for keyword in exclude_keywords):
+                    continue # don't keep any of the exclusions
+                else:
                     entry = line.strip().split('\t')
                     if len(entry) > 1:  
                         fields = entry[1:] # can ditch the read id 
@@ -58,7 +60,9 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,lcaheader
                     print("Alert! You have duplicate entries in your LCA file, for example " + newreadname + ". That's a problem. You should fix this (e.g. using uniq) and re-run BamDam.")
                 if upto in line:
                     # you can just go straight to the upto level and check if that node has high enough count 
-                    if not other_lca_keywords or all(keyword in line for keyword in other_lca_keywords):                        
+                    if any(keyword in line for keyword in exclude_keywords):
+                        continue # don't keep the ones that have the keywords
+                    else:                    
                         for field in entry[1:]:
                             if f":{upto}" in field:
                                 number = field.split(':')[0]
@@ -68,7 +72,7 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,lcaheader
 
     print("Wrote shortened lca file. \n")
 
-def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded,lcaheaderlines,minsimilarity,other_lca_keywords): 
+def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded,lcaheaderlines,minsimilarity): 
     # runs through the existing bam and the new short lca file at once, and writes only lines to the new bam which are represented in the short lca file
     # also annotates with pmd scores as it goes
 
@@ -646,7 +650,7 @@ def parse_and_write_node_data(nodedata, stats_path, subs_path, k, stranded):
 
     print("Wrote final stats and subs files. Done!")
 
-def main(in_lca, in_bam, out_lca, out_bam, out_stats, out_subs, stranded, mincount, k, upto, lcaheaderlines, minsim, other_lca_keywords):
+def main(in_lca, in_bam, out_lca, out_bam, out_stats, out_subs, stranded, mincount, k, upto, lcaheaderlines, minsim, exclude_keywords):
 
     # STEP 1: Reduce the size of the lca and bam files by removing things in both which:
     #  - don't meet your tax threshold 
@@ -655,8 +659,8 @@ def main(in_lca, in_bam, out_lca, out_bam, out_stats, out_subs, stranded, mincou
     # While we're at it, add a PMD tag to each read in the shortened bam file. 
 
     # Moving things around a little bit. Step 1.1 is now to rewrite just the lca file in two passes.
-    write_shortened_lca(in_lca,out_lca,upto,mincount,lcaheaderlines,other_lca_keywords)
-    write_shortened_bam(in_bam,out_lca,out_bam,stranded,lcaheaderlines,minsim,other_lca_keywords) 
+    write_shortened_lca(in_lca,out_lca,upto,mincount,lcaheaderlines,exclude_keywords)
+    write_shortened_bam(in_bam,out_lca,out_bam,stranded,lcaheaderlines,minsim,) 
 
     # STEP 2: calculate substitution table, kmers, etc per node. write temp file. compute damage and k-mer read set complexity. write subs and stats files. 
     nodedata = gather_subs_and_kmers(out_bam, out_lca, k = k, upto = upto,stranded = stranded, lcaheaderlines = lcaheaderlines)
@@ -667,10 +671,10 @@ if __name__ == "__main__":
     
     # Initialize
     parser = argparse.ArgumentParser(
-        description="BamDam processes LCA and bam files for ancient environmental DNA. Please ensure your input bam is sorted in the same order as your input lca file, and that every read in your LCA file is also \
-          in your bam file (the opposite need not be true). This will be true by default if you use fresh ngsLCA output. Also, please provide a ngsLCA lca file, not a metaDMG lca file (they have different formats).",
+        description="BamDam processes LCA and bam files for ancient environmental DNA.",
         epilog="\
-          BamDam was written by Bianca De Sanctis in 2024. For assistance please contact bddesanctis@gmail.com.")
+          Written by Bianca De Sanctis in 2024. For assistance please contact bddesanctis@gmail.com.")
+    
     
     # Mandatory arguments
     parser.add_argument("--in_lca", type=str, required=True, help="Path to the original (sorted) LCA file")
@@ -687,9 +691,7 @@ if __name__ == "__main__":
     parser.add_argument("--upto", type=str, default="family", help="Keep nodes up to and including this tax threshold, use root to disable (default: family)")
     parser.add_argument("--lcaheaderlines", type=int, default=0, help="Number of header lines in input LCA file (default: 0)")
     parser.add_argument("--minsim", type=float, default=0.95, help="Minimum similarity to reference to keep a read (default: 0.95)")
-    parser.add_argument("--keep_keywords", type=str, nargs='+', default=[], help="Other keyword(s) in LCA file for filtering to keep, e.g. Eukaryota (default: none)")
-    parser.add_argument("--exclude_keywords", type = str, nargs='+', default=["Hominidae"], help="Other keyword(s) in LCA file for filtering to delete (default Hominidae)- NOT IMPLEMENTED YET")
-    parser.add_argument("--exclude_keyword_file", type = str, default="", help="Text file containing list of keywords or tax paths to remove in LCA file, one on each line- NOT IMPLEMENTED YET")
+    parser.add_argument("--exclude_keywords", type=str, nargs='+', default=["Hominidae"], help="Other keyword(s) in LCA file for filtering to delete (default: Hominidae)")
 
     if '--help' in sys.argv or '-h' in sys.argv:
         parser.print_help()
@@ -729,73 +731,13 @@ if __name__ == "__main__":
     print(f"upto: {args.upto}")
     print(f"lcaheaderlines: {args.lcaheaderlines}")
     print(f"minsim: {args.minsim}")
-    print(f"other_lca_keywords: {args.other_lca_keywords}")
+    print(f"exclude_keywords: {args.exclude_keywords}")
  
     main(
         args.in_lca, args.in_bam, args.out_lca, args.out_bam, 
         args.out_stats, args.out_subs, args.stranded, 
-        args.mincount, args.k, args.upto, args.lcaheaderlines, args.minsim, args.other_lca_keywords
+        args.mincount, args.k, args.upto, args.lcaheaderlines, args.minsim, 
+        args.exclude_keywords
     )
-
-
-
-
-###### Comment section for Bianca. 
-
-# Sometimes ngslca spits out duplicate lines for no reason. I don't know why. Get rid of them before running this!! Like this
-# awk '!seen[$0]++' input_lca > output_lca
-
-# EXAMPLE
-''' 
-python BamDam4.py \
-    --in_lca "/Users/bianca/Dropbox/Documents/academic/postdoc_durbin/betadmg/data/LV7008961409-LV7005366316-LV3005888478_S32_onlyeukaryotfamilies.score96.lca" \
-    --in_bam "/Users/bianca/Dropbox/Documents/academic/postdoc_durbin/betadmg/data/LV7008961409-LV7005366316-LV3005888478_S32.sorted.bam" \
-    --out_lca "/Users/bianca/Dropbox/Documents/academic/postdoc_durbin/betadmg/data/LV7008961409-LV7005366316-LV3005888478_S32_shortened.lca" \
-    --out_bam "/Users/bianca/Dropbox/Documents/academic/postdoc_durbin/betadmg/data/LV7008961409-LV7005366316-LV3005888478_S32_shortened.bam" \
-    --out_stats "/Users/bianca/Dropbox/Documents/academic/postdoc_durbin/betadmg/data/LV7008961409-LV7005366316-LV3005888478_S32_allstats.txt" \
-    --out_subs "/Users/bianca/Dropbox/Documents/academic/postdoc_durbin/betadmg/data/LV7008961409-LV7005366316-LV3005888478_S32_allsubs.txt" \
-    --stranded ds \
-    --mincount 5 \
-    --k 5 \
-    --upto "family" \
-    --lcaheaderlines 0 \
-    --minsim 0.96 \
-    --other_lca_keywords Eukaryota
-'''
-
-
-# and then 
-# ./PlotDamage.R -f "/Users/bianca/Dropbox/Documents/academic/postdoc_durbin/betadmg/data/LV7001882898-LV7005224373-CGG3-012108.subs.txt" -t "48230" -o "dryas.png" -s "ds"
-
-### BIANCA STILL TO DO ###
-# - write a plotting function in R that runs on (a) the subs file to plot damage and (b) the lca + bam to plot pmd distribution
-# - write another plotting function for read length distribution
-# - write a python function, separately from this, to quickly extract reads from a bam or fq file assigned to a specific genus (see below) 
-# - consider writing a function to add some metadmg parameters to the output stats file 
-# - consider writing an option to NOT include nodes under ones with mincount if those underneath nodes don't meet mincount themselves
-    # (you could just pass an option keepunder = False or something like this)
-# - implement progress bars w tqdm
-# - write a function to combine multiple stats and subs files from multiple different files, like from ellesmere 
-    # then you can combine the "read-pulling-out function" with this and make a full-on damage distribution for different taxa in ellesmere! 
-# - consider outputting a metadmg-like Dfit once you understand what the hell it is doing 
-# - add a logger
-# - implement remove keywords from lca like Homonidae , maybe take in a whole txt file list of keywords from controls lcas?
-# - consider "damtools" 
-# - consider rewriting bamfilter 
-# - rory: are more strands ending in purines (A vs G) than anything else? could check this! https://www.pnas.org/doi/abs/10.1073/pnas.0704665104 
-# - output ani without the damage substitutions . could make it comparable b/w ss and ds by cutting the read in half 
-# - clean up the keyword 
-
-# here is a bash line to get all reads associated to a certain tax. but it is slow and opens the whole file and i could do it faster.
-'''
-wanna see all reads associated with a given tax node? do:
-grep "Alnus" LV7008961409-LV7005366316-LV3005888478_S32_shortened.lca | \
-awk '{print $1}' | \
-awk '{gsub(/^M_/, ""); split($0, fields, ":"); print fields[1]":"fields[2]":"fields[3]":"fields[4]":"fields[5]":"fields[6]":"fields[7]}' | \
-grep -F -f - <(samtools view LV7008961409-LV7005366316-LV3005888478_S32_shortened.bam) | awk {'print $9'} | uniq -c | sort
-i should write a lil function to do this faster later. grep is slow and will freak out if it has to open a 1tb bam file. 
-''' 
-
-
 
 
