@@ -62,9 +62,7 @@ options:
 --upto : Keep nodes up to and including this tax threshold, use root to disable (default: family)
 --lcaheaderlines : Number of header lines in input LCA file - just go look at the file real quick and find out (default: 0)
 --minsim : Minimum similarity to reference to keep a read. This should be the same as your ngslca minimum similarity! (default: 0.95)
---keep_keywords : Other keyword(s) in LCA file for filtering to keep, e.g. Eukaryota (default: none) - nOT IMPLEMENTED YET
---exclude_keywords : Other keyword(s) in LCA file for filtering to delete (default Hominidae) - NOT IMPLEMENTED YET
---exclude_keyword_file : Text file containing list of keywords or tax paths to remove in LCA file, one on each line - NOT IMPLEMENTED YET
+--exclude_keywords : Keyword(s) in LCA file for filtering to exclude lines containing (default: Hominidae)
 ```
 
 Example usage:
@@ -82,7 +80,7 @@ python BamDam.py \
     --upto "family" \
     --lcaheaderlines 0 \
     --minsim 0.95 \
-    --keep_keywords Eukaryota \
+    --exclude_keywords Homonidae Felidae \
     > S32_bamdam.log
 ```
 
