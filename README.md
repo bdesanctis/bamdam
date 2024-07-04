@@ -82,7 +82,8 @@ python BamDam.py \
     --upto "family" \
     --lcaheaderlines 0 \
     --minsim 0.95 \
-    --keep_keywords Eukaryota
+    --keep_keywords Eukaryota \
+    > S32_bamdam.log
 ```
 
 ## Explanation of the output stats file columns
