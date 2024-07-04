@@ -1,14 +1,17 @@
-# bamdam: A toolkit for ancient environmental DNA shotgun sequencing data
+# bamdam: A toolkit for ancient environmental DNA capture or shotgun sequencing data
 
 Written by Bianca De Sanctis in July 2024. Please contact me with any issues, unexpected behavior, or requests! I want to improve this software! bddesanctis@gmail.com
 
-Welcome to bamdam! The goal of this toolkit is to provide functionality after shotgun sequencing aeDNA reads have been mapped to a reference database and run through ngsLCA. The main program is BamDam.py, with additional plotting functionality in extra R scripts.
+Welcome to bamdam! The goal of this toolkit is to provide functionality after shotgun sequencing aeDNA reads have been mapped to a reference database and run through ngsLCA using the reference database taxonomy to obtain a .lca file. The main program is BamDam.py, with additional plotting functionality in extra R scripts.
+
+This pipeline and software is not appropriate for metabarcoding data.
 
 ## Table of Contents
 - [Installation](#installation)
 - [Main Script: BamDam.py](#main-script)
 - [Explanation of the Output Stats File Columns](#explanation-of-the-output-stats-file-columns)
 - [Plotting Script](#plotting-script)
+- [How do I get the point where I can use bamdam?][#how-to-get-to-the-point-where-i-can-use-bamdam]
 - [Coming Soon](#coming-soon)
 - [License](#license)
 
@@ -125,6 +128,10 @@ Options:
 
 Example plot (this one has a lot of reads contributing to it, they will generally be noisier):
 ![Damage plot of Dryas](https://github.com/bdesanctis/bamdam/blob/main/dryas.png)
+
+## How do I get the point where I can use bamdam?
+
+Still gotta write a paragraph here about mapping to reference databases, where to find taxonomy files, ngslca etc.
 
 ## Coming soon
 
