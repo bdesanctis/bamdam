@@ -49,22 +49,22 @@ BamDam.py [-h] --in_lca IN_LCA --in_bam IN_BAM --out_lca OUT_LCA --out_bam OUT_B
           
 options:
 
--h, --help: show this help message and exit
---in_lca IN_LCA: Path to the original (sorted) LCA file (required)
---in_bam IN_BAM: Path to the original (sorted) BAM file (required)
---out_lca OUT_LCA: Path to the short output LCA file (required)
---out_bam OUT_BAM: Path to the short output BAM file (required)
---out_stats OUT_STATS: Path to the output stats file (required)
---out_subs OUT_SUBS: Path to the output subs file (required)
---stranded STRANDED: Either ss for single stranded or ds for double stranded (required)
---mincount MINCOUNT: Minimum read count to keep a node (default: 5)
---k K: Value of k for kmer complexity calculations (default: 5)
---upto UPTO: Keep nodes up to and including this tax threshold, use root to disable (default: family)
---lcaheaderlines LCAHEADERLINES: Number of header lines in input LCA file - just go look at the file real quick and find out (default: 0)
---minsim MINSIM: Minimum similarity to reference to keep a read. This should be the same as your ngslca minimum similarity! (default: 0.95)
---keep_keywords KEEP_KEYWORDS [KEEP_KEYWORDS ...]: Other keyword(s) in LCA file for filtering to keep, e.g. Eukaryota (default: none)
---exclude_keywords EXCLUDE_KEYWORDS [KEEP_KEYWORDS ...]: Other keyword(s) in LCA file for filtering to delete (default Hominidae) - NOT IMPLEMENTED YET
---exclude_keyword_file EXCLUDE_KEYWORD_FILE: Text file containing list of keywords or tax paths to remove in LCA file, one on each line - NOT IMPLEMENTED YET
+-h, --help : show this help message and exit
+--in_lca : Path to the original (sorted) LCA file (required)
+--in_bam : Path to the original (sorted) BAM file (required)
+--out_lca : Path to the short output LCA file (required)
+--out_bam : Path to the short output BAM file (required)
+--out_stats : Path to the output stats file (required)
+--out_subs : Path to the output subs file (required)
+--stranded : Either ss for single stranded or ds for double stranded (required)
+--mincount : Minimum read count to keep a node (default: 5)
+--k : Value of k for kmer complexity calculations (default: 5)
+--upto : Keep nodes up to and including this tax threshold, use root to disable (default: family)
+--lcaheaderlines : Number of header lines in input LCA file - just go look at the file real quick and find out (default: 0)
+--minsim : Minimum similarity to reference to keep a read. This should be the same as your ngslca minimum similarity! (default: 0.95)
+--keep_keywords : Other keyword(s) in LCA file for filtering to keep, e.g. Eukaryota (default: none) - nOT IMPLEMENTED YET
+--exclude_keywords : Other keyword(s) in LCA file for filtering to delete (default Hominidae) - NOT IMPLEMENTED YET
+--exclude_keyword_file : Text file containing list of keywords or tax paths to remove in LCA file, one on each line - NOT IMPLEMENTED YET
 ```
 
 Example usage:
