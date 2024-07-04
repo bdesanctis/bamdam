@@ -29,7 +29,7 @@ The main script BamDam.py will:
 
 You can then look through your stats file and decide what seems real and ancient to you. You may also plot damage plots for individual tax IDs using an R script and the subs file which is detailed in the next section. The subs file should be fairly self-explanatory in formatting, if you are interested in looking at it.
 
-Please ensure your input bam is sorted in the same order as your input lca file, and that every read in your LCA file is also in your bam file (the opposite need not be true). This will be true by default if you use fresh ngsLCA output. Also, for now, please provide a ngsLCA lca file, not a metaDMG lca file (they have different formats).
+Please ensure your input bam is sorted in the same order as your input lca file, and that every read in your LCA file is also in your bam file, which will be true by default if you use fresh ngsLCA output. However, the opposite need not be true, so you can subset your lca file before running bamdam if you'd like, and bamdam will feed only those lines in the lca file through to the shortened bam. Also, for now, please provide a ngsLCA lca file, not a metaDMG lca file (they have different formats).
 
 Usage and options: 
 ```sh
