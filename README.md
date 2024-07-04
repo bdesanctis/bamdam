@@ -130,7 +130,8 @@ Options:
                 Show this help message and exit
 ```
 
-Example plot (this one has a lot of reads contributing to it, they will generally be noisier):
+Example double-stranded plot (this one has a lot of reads contributing to it, they will generally be noisier):
+
 ![Damage plot of Dryas](https://github.com/bdesanctis/bamdam/blob/main/dryas.png)
 
 ## Steps before bamdam
