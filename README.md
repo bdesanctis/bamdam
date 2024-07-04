@@ -155,7 +155,8 @@ Aka my to do list :). Please let me know if you have requests, or really like an
 - consider "damtools" as a name - other suggestions also welcome haha
 - [priority] consider rewriting bamfilter evenness of coverage calculation - this would go before ngslca
 - rory: are more strands ending in purines (A vs G) than anything else? could check this! https://www.pnas.org/doi/abs/10.1073/pnas.0704665104 
-- output ani without the damage substitutions . could make it comparable b/w ss and ds by cutting the read in half 
+- output ani without the damage substitutions . could make it comparable b/w ss and ds by cutting the read in half
+- yucheng: derive a kmer distribution from the modern reads, and remove reads with many of those kmers from ancient samples
 - eventually - null damage distribution?
 
 ## License
