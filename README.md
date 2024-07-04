@@ -4,9 +4,9 @@
 
 Written by Bianca De Sanctis in July 2024. Please contact me with any issues, unexpected behavior, or requests! I want to improve this software! bddesanctis@gmail.com
 
-Welcome to bamdam! The goal of this toolkit is to provide functionality after shotgun sequencing aeDNA reads have been mapped to a reference database and run through ngsLCA using the reference database taxonomy to obtain a .lca file. Storing these giant bams immediately post-mapping is annoying because they can be huge, so the first point of bamdam is to write (much) smaller versions that still include all the relevant information. The second point of bamdam is to compute a ton of read set metrics to determine if a taxonomic node looks damaged or "real". There are also associated extra scripts for plotting functionality and (soon) quickly extracting reads from a fq or bam belonging to a specific tax id(s).
+Welcome to bamdam! The goal of this toolkit is to provide functionality after shotgun sequencing aeDNA reads have been mapped to a reference database and run through ngsLCA using the reference database taxonomy to obtain a .lca file. Storing these often giant bams immediately post-mapping is annoying, so the first point of bamdam is to write (much) smaller versions that still include all the relevant information for the project. The second point of bamdam is to compute a ton of read set metrics to determine if a taxonomic node looks like a real ancient taxa. There are also associated extra scripts for plotting functionality and (soon) quickly extracting reads from a fq or bam belonging to a specific tax id(s).
 
-This pipeline and software is not appropriate for metabarcoding data.
+This pipeline and software is not appropriate for metabarcoding data. 
 
 Bamdam was heavily inspired by [metaDMG](https://github.com/metaDMG-dev/metaDMG-cpp) and [filterBAM](https://github.com/genomewalker/bam-filter). It is not particularly optimized for speed, and doesn't thread yet. On the other hand, it doesn't ever read a whole file into memory, so it shouldn't need that much RAM (please tell me if you manage to crash it and how). It can do a 40GB bam in an hour on my laptop and this should scale close to linearly. That feels sufficient to me for now - let me know if it's not for you. I could thread it.
 
