@@ -8,6 +8,8 @@ Welcome to bamdam! The goal of this toolkit is to provide functionality after sh
 
 This pipeline and software is not appropriate for metabarcoding data.
 
+Bamdam was heavily inspired by [metaDMG](https://github.com/metaDMG-dev/metaDMG-cpp) and [filterBAM](https://github.com/genomewalker/bam-filter).
+
 ## Table of Contents
 - [Installation](#installation)
 - [Main Script: BamDam.py](#main-script)
