@@ -1,36 +1,36 @@
 # bamdam: A post-mapping toolkit for ancient environmental DNA capture or shotgun sequencing data
 
-## Important note - this software is still in development!
+## Table of Contents
+- [Description](#description)
+- [Installation](#installation)
+- [Main Script](#main-script)
+- [Plotting Script](#plotting-script)
+- [Script to extract reads](#script-to-extract-reads)
+- [Coming Soon](#coming-soon)
+
+## Description
+
+Important note - this software is still in development!
 
 Please contact me with any issues, unexpected behavior, or requests! bddesanctis@gmail.com
 
-Welcome to bamdam! The goal of this toolkit is to provide functionality after shotgun sequencing aeDNA reads have been mapped to a reference database and run through ngsLCA using the reference database taxonomy to obtain a .lca file. If you have a lot of data, long term storing these often giant bams post-mapping can be annoying, so the first point of bamdam is to write (much) smaller versions that still include all the relevant information for the project. The second point of bamdam is to compute a ton of read set metrics to determine if a taxonomic node looks like a real ancient taxa. There are also associated extra scripts for plotting functionality and quickly extracting reads from a fq or bam belonging to a specific tax id(s). More to come, probably.
+Welcome to bamdam! The goal of this toolkit is to provide functionality after shotgun sequencing aeDNA reads have been mapped to a reference database and run through ngsLCA using the reference database taxonomy to obtain a .lca file. If you have a lot of data, long term storing these often giant bams post-mapping can be annoying, so the first point of bamdam is to write (much) smaller versions that still include all the relevant information for the project. The second point of bamdam is to compute a ton of read set metrics to determine if a taxonomic node looks like a real ancient taxa. There are also associated extra scripts PlotDamage.R for smiley plots and extractreads.py for quickly extracting reads from a fq or bam belonging to a specific tax id(s). 
 
 This pipeline and software is not appropriate for metabarcoding data. 
 
 Bamdam was heavily inspired by [metaDMG](https://github.com/metaDMG-dev/metaDMG-cpp) and [filterBAM](https://github.com/genomewalker/bam-filter). It is not particularly optimized for speed, and doesn't thread yet. On the other hand, it doesn't ever read a whole file into memory, so it shouldn't need that much RAM (please tell me if you manage to crash it and how). It can subset a 40GB bam to family level in an hour on my laptop and this should scale close to linearly. That feels sufficient to me for now - let me know if it's not for you. I could implement threading.
 
-## Table of Contents
-- [Installation](#installation)
-- [BamDam.py: Main Script](#main-script)
-- [BamDam.py: Explanation of the Output Stats File Columns](#explanation-of-the-output-stats-file-columns)
-- [PlotDamage.R: Plotting Script](#plotting-script)
-- [extractreads.py: Script to extract reads](#script-to-extract-reads)
-- [Steps before bamdam](#steps-before-bamdam)
-- [Coming Soon](#coming-soon)
-- [License](#license)
+More to come, probably.
 
 ## Installation
 
-Hopefully pretty straightforward. 
+Hopefully pretty straightforward. It's got a couple python and R packages as dependencies. 
 
 ```sh
 git clone https://github.com/bdesanctis/bamdam.git
 cd bamdam
 chmod +x PlotDamage.R
 ```
-
-Should complain when you try to run scripts if you don't have the appropriate python or R libraries installed, in which case install then run again.
 
 ## Main Script
 
@@ -89,7 +89,7 @@ python BamDam.py \
     > S32_bamdam.log
 ```
 
-## Explanation of the output stats file columns
+### Explanation of the output stats file columns
 - **TaxNodeID**: The tax node ID from the lca file.
 - **"TaxName"**: The tax name rom the lca file.
 - **"TotalReads"**: The number of reads assigned to that node or underneath.
@@ -159,10 +159,6 @@ Usage example:
 ```sh
 python extractreads.py --in_lca in.lca --in_bam in.bam --keyword "Salix" --out_bam onlysalix.bam
 ```
-
-## Steps before bamdam
-
-To do. Gonna write a paragraph here about mapping to reference databases, where to find taxonomy files, ngslca, prefiltering lca files etc.
 
 ## Coming soon
 
