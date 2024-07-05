@@ -162,22 +162,18 @@ python extractreads.py --in_lca in.lca --in_bam in.bam --keyword "Salix" --out_b
 
 ## Coming soon
 
-Aka my to do list :). Please let me know if you have requests, or really like any of these ideas.
+Aka my to do list, suggestions welcome :)
 
 - [priority!!!] make it so the new bam also has a shorter header, right now it is just copying the old header and that is mildly ridiculous
 - [priority!!!] output the difference between other 5' and c>t 5' (same with 3') as a difference in proportions too i think
-
 - [priority] consider rewriting bamfilter evenness of coverage calculation - this would go before ngslca
 - write a plotting function in R that runs on the lca + bam to plot pmd distribution
-- write another plotting function for read length distribution
-- consider writing a function to add some metadmg parameters to the output stats file 
-- consider writing an option to NOT include nodes under ones with mincount if those underneath nodes don't meet mincount themselves. (you could just pass an option keepunder = False or something like this)
--  write a function to combine multiple stats and subs files from multiple different files, like from ellesmere . then you can combine the "read-pulling-out function" with this and make a full-on damage distribution for different taxa in ellesmere! 
-- add a logger (maybe this is more pain than it's worth)
-- consider "damtools" as a name - other suggestions also welcome haha
-- rory: are more strands ending in purines (A vs G) than anything else? could check this! https://www.pnas.org/doi/abs/10.1073/pnas.0704665104 
 - output ani without the damage substitutions . could make it comparable b/w ss and ds by cutting the read in half
-- yucheng: derive a kmer distribution from the modern reads, and remove reads with many of those kmers from ancient samples
+- [maybe] write another plotting function for read length distribution
+- [maybe] write a function to add some metadmg parameters to the output stats file 
+- [maybe] write a function to combine multiple stats and subs files from multiple different files, like from ellesmere . then you can combine the "read-pulling-out function" with this and make a full-on damage distribution for different taxa in ellesmere! 
+- [maybe] rory: are more strands ending in purines (A vs G) than anything else? could check this! https://www.pnas.org/doi/abs/10.1073/pnas.0704665104 
+- [probably] yucheng: derive a kmer distribution from the modern reads, and remove reads with many of those kmers from ancient samples
 - eventually - null damage distribution?
 - add some example data
 
