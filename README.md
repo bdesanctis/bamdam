@@ -13,7 +13,7 @@ Important note - this software is still in development!
 
 Please contact me with any issues, unexpected behavior, or requests! bddesanctis@gmail.com
 
-Welcome to bamdam! The goal of this toolkit is to provide functionality after shotgun sequencing aeDNA reads have been mapped to a reference database and run through ngsLCA using the reference database taxonomy to obtain a .lca file. If you have a lot of data, long term storing these often giant bams post-mapping can be annoying, so the first point of bamdam is to write (much) smaller versions that still include all the relevant information for the project. The second point of bamdam is to compute a ton of read set metrics to determine if a taxonomic node looks like a real ancient taxa. 
+Welcome to bamdam! The goal of this toolkit is to provide functionality after shotgun sequencing aeDNA reads have been mapped to a reference database and run through [ngsLCA](https://github.com/miwipe/ngsLCA) using the reference database taxonomy to obtain a .lca file. If you have a lot of data, long term storing these often giant bams post-mapping can be annoying, so the first point of bamdam is to write (much) smaller versions that still include all the relevant information for the project. The second point of bamdam is to compute a ton of read set metrics to determine if a taxonomic node looks like a real ancient taxa. 
 
 There are also the following accessory scripts:
 - PlotDamage.R for smiley plots,
@@ -190,11 +190,10 @@ Aka my to do list, suggestions welcome :)
 - [probably] yucheng: derive a kmer distribution from the modern reads, and remove reads with many of those kmers from ancient samples
 - eventually - null damage distribution?
 - add some example data
+- write down a full workflow. essentially i am thinking map, remove unnecessary headers, merge, sort, bamfilter, ngslca, bamdam, perhaps metadmg too, subset lca files based on the results down to just the taxa you want, then ngslca r package for removing control taxa, etc and making figures. maybe add yucheng's kmer profiling before mapping.
 
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.
-
-
 
 BamDam was written by Bianca De Sanctis in 2024. For assistance please contact bddesanctis@gmail.com.
 
