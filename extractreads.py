@@ -9,6 +9,11 @@ import pysam
 def main(in_lca, in_bam, out_bam, keyword):
 
     lcaheaderlines = 0
+    with open(in_lca, 'r') as lcafile:
+        for lcaline in lcafile:
+            if "root" in lcaline:
+                break
+            lcaheaderlines += 1
 
     with pysam.AlignmentFile(in_bam, "rb", check_sq=False, require_index=False) as infile, \
          pysam.AlignmentFile(out_bam, "wb", header=infile.header) as outfile, \
