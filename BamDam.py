@@ -671,7 +671,6 @@ def parse_and_write_node_data(nodedata, stats_path, subs_path, k, stranded):
 def main(in_lca, in_bam, out_lca, out_bam, out_stats, out_subs, stranded, mincount, k, upto, minsim, exclude_keywords):
 
     # this seems silly but i might as well only do it once instead of inside every function
-    in_lca = "/Users/bianca/Dropbox/Documents/academic/postdoc_durbin/betadmg/data/LV7008961409-LV7005366316-LV3005888478_S32_onlyeukaryotfamilies.score96.lca"
     lcaheaderlines = 0
     with open(in_lca, 'r') as lcafile:
         for lcaline in lcafile:
