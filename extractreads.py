@@ -69,16 +69,6 @@ def main(in_lca, in_bam, out_bam, keyword):
                         notdone = False
                         break # done the lca file 
 
-def str2bool(v):
-    if isinstance(v, bool):
-        return v
-    if v.lower() in ('true', 't'):
-        return True
-    elif v.lower() in ('false', 'f'):
-        return False
-    else:
-        raise argparse.ArgumentTypeError('Boolean value expected.')
-
 if __name__ == "__main__":
     
     # Initialize
