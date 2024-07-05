@@ -137,7 +137,7 @@ Usage example:
 
 Example double-stranded plot (this one has a lot of reads contributing to it, they will generally be noisier):
 
-![Damage plot of Dryas](https://github.com/bdesanctis/bamdam/blob/main/dryas.png)
+<img src="https://github.com/bdesanctis/bamdam/blob/main/dryas.png" width="600">
 
 ## Script to extract reads
 
