@@ -94,12 +94,12 @@ python BamDam.py \
 ### Explanation of the output stats file columns
 
 - **TaxNodeID**: The tax node ID from the lca file.
-- **TaxName**: The tax name rom the lca file.
+- **TaxName**: The tax name from the lca file.
 - **TotalReads**: The number of reads assigned to that node or underneath.
 - **PMDsover2**: The proportion of reads assigned to that node or underneath with mean PMD scores over 2 (where the mean is over the alignments of that read, since a PMD score is computed per alignment).
 - **PMDSover4**: The proportion of reads assigned to that node or underneath with mean PMD scores over 4.
-- **ND+1**: Normalized damage +1: The proportion of reads assigned to that node or underneath where every alignment of that read had a C->T on the 5' (+1) position, minus the mean (non C>T or G>A) divergence for that node.
-- **ND-1**: Normalized damage -1: The proportion of reads assigned to that node or underneath where every alignment of that read had a C->T if single stranded, or a G->A if double stranded, on the 3' (-1) position, minus the mean (non C>T or G>A) divergence for that node.
+- **ND+1**: Normalized damage +1: The proportion of reads assigned to that node or underneath with a C->T on the 5' (+1) position, minus the mean (non C>T or G>A) divergence for that node.
+- **ND-1**: Normalized damage -1: The proportion of reads assigned to that node or underneath with a C->T if single stranded, or a G->A if double stranded, on the 3' (-1) position, minus the mean (non C>T or G>A) divergence for that node.
 - **TotalAlignments**: Sum of the number of alignments for all the reads assigned to that node or underneath.
 - **MeanLength**: The mean length of the reads assigned to that node or underneath.
 - **Div**: The mean divergence for that node, not including any C>T or G>A transitions.
@@ -174,7 +174,7 @@ This is a very basic histogram plotting wrapper. Once you've extracted a bam fil
 
 The following will extract all PMD scores from a bam file, feed them into a basic R histogram plotting script, and save the histogram to "salixPMDs.png" with the title "Salix PMD scores":
 ```sh
-samtools view onlysalix.bam | grep -o 'DS:Z:[^ ]*' | sed 's/DS:Z://' | ./PlotPMD.R -o onlysalix.png -t "Salix"
+samtools view onlysalix.bam | grep -o 'DS:Z:[^ ]*' | sed 's/DS:Z://' | ./PlotPMD.R -o salixpmds.png -t "Salix"
 ```
 
 ## Coming soon
