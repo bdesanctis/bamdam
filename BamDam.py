@@ -8,11 +8,6 @@ import pysam
 import math
 import argparse
 import os
-try:
-    from tqdm import tqdm
-except ImportError:
-    pass  # tqdm is not available . it's not necessary, just nice for progress bars 
-
 
 def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,lcaheaderlines,exclude_keywords):
 
@@ -439,6 +434,10 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, k, upto,stranded,lcaheader
     nms = 0 
     pmdsover2 = 0
     pmdsover4 = 0
+    ctp1 = 0
+    ctm1 = 0
+    gam1 = 0
+    div = 0
     stop = False # for debugging
 
     for _ in range(numheaderlines +1):
@@ -478,29 +477,28 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, k, upto,stranded,lcaheader
                     # that's ok! add it. 
                     node_data[node] = {'total_reads': 0,'pmdsover2': 0, 'pmdsover4': 0, 'meanlength': 0, 'total_alignments': 0, 
                                        'ani': 0, 'avgperreadgini' : 0, 'avggc': 0, 'tax_path' : "", 'subs': {}, 'kmer_count': {},
-                                       'dp1' : 0, 'dm1' : 0}
+                                       'dp1' : 0, 'dm1' : 0, 'div': 0}
                 node_data[node]['meanlength'] = ((node_data[node]['meanlength'] * node_data[node]['total_reads']) + readlength) / (node_data[node]['total_reads'] + 1)
                 node_data[node]['avgperreadgini'] = ( (node_data[node]['avgperreadgini'] * node_data[node]['total_reads']) + calculate_kmer_complexity(kmer_table)) / (node_data[node]['total_reads'] + 1)
                 ani_for_this_read = (readlength - nms/num_alignments)/readlength 
                 node_data[node]['ani'] = (ani_for_this_read + node_data[node]['ani'] * node_data[node]['total_reads']) / (node_data[node]['total_reads'] + 1)
                 gc_content_for_this_read = (seq.count('C') + seq.count('G')) / readlength
                 node_data[node]['avggc'] = ((node_data[node]['avggc'] * node_data[node]['total_reads']) + gc_content_for_this_read) / (node_data[node]['total_reads'] + 1)
-                node_data[node]['total_reads'] += 1
                 node_data[node]['total_alignments'] += num_alignments
                 node_data[node]['pmdsover2'] += pmdsover2 / num_alignments
                 node_data[node]['pmdsover4'] += pmdsover4 / num_alignments
                 # only consider a transition snp "damage" if it's in every alignment of a read! 
                 ctp1 = currentsubdict.get("['C', 'T', 1]", 0) # c -> t on the pos 1 
-                if ctp1 == num_alignments: 
-                    node_data[node]['dp1'] += 1 
+                ctm1 = currentsubdict.get("['C', 'T', -1]", 0) # c -> t on the pos 1 
+                gam1 = currentsubdict.get("['G', 'A', -1]", 0) # c -> t on the pos 1 
+                # ok, so on josh kapp's suggestion, i used to only add to dp1 and dm1 if all the alignments for that read had a c>t, which does make sense.
+                # but then it doesn't match the damage plots and that bugs me to no end, so i went back to adding the proportion of reads which had a c>t.
+                #if ctp1 == num_alignments:  will do it 
+                node_data[node]['dp1'] = ((node_data[node]['dp1'] * node_data[node]['total_reads']) + (ctp1/num_alignments) ) / (node_data[node]['total_reads'] + 1)
                 if stranded == "ss":
-                    ctm1 = currentsubdict.get("['C', 'T', -1]", 0) # c -> t on the minus 1 
-                    if ctm1 == num_alignments:
-                        node_data[node]['dm1'] += 1 
+                    node_data[node]['dm1'] = ((node_data[node]['dm1'] * node_data[node]['total_reads']) + (ctm1/num_alignments) )  / (node_data[node]['total_reads'] + 1)
                 if stranded == "ds":
-                    gam1 = currentsubdict.get("['G', 'A', -1]", 0)
-                    if gam1 == num_alignments:
-                        node_data[node]['dm1'] += 1 
+                    node_data[node]['dm1'] = ((node_data[node]['dm1'] * node_data[node]['total_reads']) + (gam1/num_alignments) ) / (node_data[node]['total_reads'] + 1)
 
                 # updates kmer counts
                 for kmer, count in kmer_indices.items(): 
@@ -509,17 +507,25 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, k, upto,stranded,lcaheader
                     else:
                         node_data[node]['kmer_count'][kmer] = count
                 # updates substitution tables similarly
+                other_sub_count = 0
                 if currentsubdict:
                     for sub, count in currentsubdict.items():
+                        if not ((sub[0] == 'C' and sub[1] == 'T') or (sub[0] == 'G' and sub[1] == 'A')):
+                            other_sub_count += count # don't include c>t or g>a in any case, regardless of library 
                         if sub in node_data[node]['subs']: 
                             node_data[node]['subs'][sub] += count / num_alignments
                         else:
                             node_data[node]['subs'][sub] = count / num_alignments # so, this can be up to 1 per node. 
+                div = other_sub_count / (num_alignments * readlength)
+                node_data[node]['div'] = ((node_data[node]['div'] * node_data[node]['total_reads']) + div ) / (node_data[node]['total_reads'] + 1)
                 # add the tax path if it's not already there
                 if node_data[node]['tax_path'] == "":
                     lca_index = next(i for i, entry in enumerate(lcaentry) if entry.startswith(node))
                     tax_path = ','.join(lcaentry[lca_index:]).replace('\n','')
                     node_data[node]['tax_path'] = tax_path
+                
+                # only now update total reads 
+                node_data[node]['total_reads'] += 1
 
             # move on. re initialize a bunch of things here 
             oldreadname = readname
@@ -529,6 +535,10 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, k, upto,stranded,lcaheader
             nms = 0
             pmdsover2 = 0
             pmdsover4 = 0
+            ctp1 = 0
+            ctm1 = 0
+            gam1 = 0
+            div = 0 
 
         # now for the current read
         seq = read.query_sequence
@@ -610,10 +620,11 @@ def parse_and_write_node_data(nodedata, stats_path, subs_path, k, stranded):
 
     statsfile = open(stats_path, 'w', newline='')
     subsfile = open(subs_path, 'w', newline='')
-    header = ['TaxNodeID', 'TaxName', 'TotalReads', 'PMDsover2', 'PMDSover4', 'Damaged+1', 'Damaged-1', 'TotalAlignments', 'MeanLength', 'ANI', 'PerReadKmerGI', 'ReadSetKmerGI', 'AvgGC', 'taxpath'] # ...divergence... damage... 
+    header = ['TaxNodeID', 'TaxName', 'TotalReads', 'PMDsover2', 'PMDSover4', 'ND+1', 'ND-1', 'TotalAlignments', 
+              'MeanLength', 'Div', 'ANI', 'PerReadKmerGI', 'ReadSetKmerGI', 'AvgGC', 'Damage+1', 'Damage-1', 'taxpath'] 
+    statsfile.write('\t'.join(header) + '\n')
     writer = csv.writer(statsfile, delimiter='\t', quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
     subswriter = csv.writer(subsfile, delimiter='\t', quotechar='"', quoting=csv.QUOTE_NONE)
-    writer.writerow(header)
 
     rows = []
     subsrows = {}
@@ -628,8 +639,15 @@ def parse_and_write_node_data(nodedata, stats_path, subs_path, k, stranded):
         kg = calculate_kmer_complexity(tn['kmer_count'], k) # read set kmer gini index: between 0 and 1. 0 is good, 1 is bad
         taxname = tn['tax_path'].split(",")[0].split(":")[1]
 
-        row = [int(node), taxname, tn['total_reads'], round(tn['pmdsover2'], 2), round(tn['pmdsover4'], 2), tn['dp1'], tn['dm1'], tn['total_alignments'], 
-               round(tn['meanlength'], 4), round(tn['ani'], 5), round(tn['avgperreadgini'], 4), round(kg, 4), round(tn['avggc'], 3), tn['tax_path']] 
+        # get normalized +1 and -1 damage frequencies
+        dp1n = tn['dp1'] - tn['div']
+        dm1n = tn['dm1'] - tn['div']
+
+        # write 
+        row = [int(node), taxname, tn['total_reads'], round(tn['pmdsover2']/tn['total_reads'],3), round(tn['pmdsover4']/tn['total_reads'], 3), 
+               round(dp1n,4), round(dm1n,4), tn['total_alignments'], 
+               round(tn['meanlength'], 2), round(tn['div'], 4), round(tn['ani'], 4), 
+               round(tn['avgperreadgini'], 4), round(kg, 4), round(tn['avggc'], 3), round(tn['dp1'],4), round(tn['dm1'],4), tn['tax_path']] 
         rows.append(row)
 
         subsrows[int(node)] = [int(node), taxname, fsubs]
@@ -650,19 +668,26 @@ def parse_and_write_node_data(nodedata, stats_path, subs_path, k, stranded):
 
     print("Wrote final stats and subs files. Done!")
 
-def main(in_lca, in_bam, out_lca, out_bam, out_stats, out_subs, stranded, mincount, k, upto, lcaheaderlines, minsim, exclude_keywords):
+def main(in_lca, in_bam, out_lca, out_bam, out_stats, out_subs, stranded, mincount, k, upto, minsim, exclude_keywords):
 
-    # STEP 1: Reduce the size of the lca and bam files by removing things in both which:
+    # this seems silly but i might as well only do it once instead of inside every function
+    in_lca = "/Users/bianca/Dropbox/Documents/academic/postdoc_durbin/betadmg/data/LV7008961409-LV7005366316-LV3005888478_S32_onlyeukaryotfamilies.score96.lca"
+    lcaheaderlines = 0
+    with open(in_lca, 'r') as lcafile:
+        for lcaline in lcafile:
+            if "root" in lcaline:
+                break
+            lcaheaderlines += 1
+
+    # write the shorter lca and bam files. remove reads which:
     #  - don't meet your tax threshold 
     #  - don't meet your min node read count 
-    #  - don't appear in the lca file (just got filtered from crap evenness of coverage or couldn't get assigned due to some taxonomy issue)
+    #  - don't appear in the lca file (previously filtered, or just got filtered from crap evenness of coverage, or couldn't get assigned due to some taxonomy issue)
     # While we're at it, add a PMD tag to each read in the shortened bam file. 
-
-    # Moving things around a little bit. Step 1.1 is now to rewrite just the lca file in two passes.
     write_shortened_lca(in_lca,out_lca,upto,mincount,lcaheaderlines,exclude_keywords)
-    write_shortened_bam(in_bam,out_lca,out_bam,stranded,lcaheaderlines,minsim,) 
+    write_shortened_bam(in_bam,out_lca,out_bam,stranded,lcaheaderlines,minsim) 
 
-    # STEP 2: calculate substitution table, kmers, etc per node. write temp file. compute damage and k-mer read set complexity. write subs and stats files. 
+    # calculate and write subs and stats files.
     nodedata = gather_subs_and_kmers(out_bam, out_lca, k = k, upto = upto,stranded = stranded, lcaheaderlines = lcaheaderlines)
     parse_and_write_node_data(nodedata,out_stats,out_subs,k,stranded)  
 
@@ -677,21 +702,20 @@ if __name__ == "__main__":
     
     
     # Mandatory arguments
-    parser.add_argument("--in_lca", type=str, required=True, help="Path to the original (sorted) LCA file")
-    parser.add_argument("--in_bam", type=str, required=True, help="Path to the original (sorted) BAM file")
-    parser.add_argument("--out_lca", type=str, required=True, help="Path to the short output LCA file")
-    parser.add_argument("--out_bam", type=str, required=True, help="Path to the short output BAM file")
-    parser.add_argument("--out_stats", type=str, required=True, help="Path to the output stats file")
-    parser.add_argument("--out_subs", type=str, required=True, help="Path to the output subs file")
-    parser.add_argument("--stranded", type=str, required=True, help="Either ss for single stranded or ds for double stranded")
+    parser.add_argument("--in_lca", type=str, required=True, help="Path to the original (sorted) LCA fil (required)")
+    parser.add_argument("--in_bam", type=str, required=True, help="Path to the original (sorted) BAM file (required)")
+    parser.add_argument("--out_lca", type=str, required=True, help="Path to the short output LCA file (required)")
+    parser.add_argument("--out_bam", type=str, required=True, help="Path to the short output BAM file (required)")
+    parser.add_argument("--out_stats", type=str, required=True, help="Path to the output stats file (required)")
+    parser.add_argument("--out_subs", type=str, required=True, help="Path to the output subs file (required)")
+    parser.add_argument("--stranded", type=str, required=True, help="Either ss for single stranded or ds for double stranded (required)")
 
     # Optional arguments with defaults
     parser.add_argument("--mincount", type=int, default=5, help="Minimum read count to keep a node (default: 5)")
     parser.add_argument("--k", type=int, default=5, help="Value of k for kmer complexity calculations (default: 5)")
     parser.add_argument("--upto", type=str, default="family", help="Keep nodes up to and including this tax threshold, use root to disable (default: family)")
-    parser.add_argument("--lcaheaderlines", type=int, default=0, help="Number of header lines in input LCA file (default: 0)")
-    parser.add_argument("--minsim", type=float, default=0.95, help="Minimum similarity to reference to keep a read (default: 0.95)")
-    parser.add_argument("--exclude_keywords", type=str, nargs='+', default=["Hominidae"], help="Other keyword(s) in LCA file for filtering to delete (default: Hominidae)")
+    parser.add_argument("--minsim", type=float, default=0.95, help="Minimum similarity to reference to keep a read; must match ngslca min similarity (default: 0.95)")
+    parser.add_argument("--exclude_keywords", type=str, nargs='+', default=[], help="Keyword(s) in LCA file for filtering to exclude lines containing (default: none)")
 
     if '--help' in sys.argv or '-h' in sys.argv:
         parser.print_help()
@@ -708,8 +732,6 @@ if __name__ == "__main__":
         parser.error(f"Invalid integer value for k: {args.k} (max 10)")
     if not re.match("^[a-z]+$", args.upto):
         parser.error(f"Invalid value for upto: {args.upto}. Must be a string of only lowercase letters.")
-    if not isinstance(args.lcaheaderlines, int):
-        parser.error(f"Invalid integer value for lcaheaderlines: {args.lcaheaderlines}")
     if not isinstance(args.minsim, float):
         parser.error(f"Invalid float value for minsim: {args.minsim}")
     if not os.path.exists(args.in_lca):
@@ -729,15 +751,17 @@ if __name__ == "__main__":
     print(f"mincount: {args.mincount}")
     print(f"k: {args.k}")
     print(f"upto: {args.upto}")
-    print(f"lcaheaderlines: {args.lcaheaderlines}")
     print(f"minsim: {args.minsim}")
     print(f"exclude_keywords: {args.exclude_keywords}")
  
     main(
         args.in_lca, args.in_bam, args.out_lca, args.out_bam, 
         args.out_stats, args.out_subs, args.stranded, 
-        args.mincount, args.k, args.upto, args.lcaheaderlines, args.minsim, 
+        args.mincount, args.k, args.upto, args.minsim, 
         args.exclude_keywords
     )
+
+
+
 
 
