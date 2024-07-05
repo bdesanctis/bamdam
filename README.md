@@ -65,9 +65,9 @@ options:
 --mincount : Minimum read count to keep a node (default: 5)
 --k : Value of k for kmer complexity calculations (default: 5)
 --upto : Keep nodes up to and including this tax threshold, use root to disable (default: family)
---lcaheaderlines : Number of header lines in input LCA file - just go look at the file real quick and find out (default: 0)
---minsim : Minimum similarity to reference to keep a read. This needs to be the same as your ngslca minimum similarity. (default: 0.95)
---exclude_keywords : Keyword(s) in LCA file for filtering to exclude lines containing (default: Hominidae)
+--lcaheaderlines : Number of header lines in input LCA file - lol i need to get rid of this (default: 0)
+--minsim : Minimum similarity to reference to keep a read; must match ngslca minimum similarity (default: 0.95)
+--exclude_keywords : Exclude lines containing, e.g. Hominidae (default: none)
 ```
 
 Example usage:
@@ -77,8 +77,8 @@ python BamDam.py \
     --in_bam "S32.sorted.bam" \
     --out_lca "S32_shortened.lca" \
     --out_bam "S32_shortened.bam" \
-    --out_stats "S32_allstats.txt" \
-    --out_subs "S32_allsubs.txt" \
+    --out_stats "S32_stats.txt" \
+    --out_subs "S32_subs.txt" \
     --stranded ds \
     --mincount 5 \
     --k 5 \
