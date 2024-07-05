@@ -141,7 +141,7 @@ Example double-stranded plot (this one has a lot of reads contributing to it, th
 
 ## Script to extract reads
 
-This is just like a fancy grep command. You could write a bash command to do the same thing, but it would probably be slower. This script leverages the fact that the lca and bam files are in the same order. Just like grep, you can use the full tax identifier, e.g. "48230:Dryas:genus", to be totally sure things will work correctly (perhaps there is a bacteria with "Dryas" in the name, I don't know).
+This is just like a fancy grep command. You could write a bash command to do the same thing, but it would probably be slower. This script leverages the fact that the lca and bam files are in the same order. Just like grep, you can use the full tax identifier, e.g. "48230:Dryas:genus", to be totally sure things will work correctly.
 
 Usage:
 ```sh
