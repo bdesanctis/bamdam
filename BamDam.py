@@ -668,6 +668,7 @@ def parse_and_write_node_data(nodedata, stats_path, subs_path, k, stranded):
 
     print("Wrote final stats and subs files. Done!")
 
+
 def main(in_lca, in_bam, out_lca, out_bam, out_stats, out_subs, stranded, mincount, k, upto, minsim, exclude_keywords):
 
     # this seems silly but i might as well only do it once instead of inside every function
@@ -678,17 +679,28 @@ def main(in_lca, in_bam, out_lca, out_bam, out_stats, out_subs, stranded, mincou
                 break
             lcaheaderlines += 1
 
-    # write the shorter lca and bam files. remove reads which:
+    # Format exclude keywords
+    formatted_keywords = []
+    for keyword in exclude_keywords:
+        if keyword.isdigit():
+            formatted_keywords.append(f":{keyword}\t")
+        elif keyword.isalpha():
+            formatted_keywords.append(f":{keyword}:")
+        else:
+            formatted_keywords.append(keyword)  # Assuming no formatting needed for mixed types
+
+    # write the shorter lca and bam files. remove reads which:
     #  - don't meet your tax threshold 
     #  - don't meet your min node read count 
-    #  - don't appear in the lca file (previously filtered, or just got filtered from crap evenness of coverage, or couldn't get assigned due to some taxonomy issue)
+    #  - don't appear in the lca file (previously filtered, or just got filtered from crap evenness of coverage, or couldn't get assigned due to some taxonomy issue)
     # While we're at it, add a PMD tag to each read in the shortened bam file. 
-    write_shortened_lca(in_lca,out_lca,upto,mincount,lcaheaderlines,exclude_keywords)
-    write_shortened_bam(in_bam,out_lca,out_bam,stranded,lcaheaderlines,minsim) 
+    write_shortened_lca(in_lca, out_lca, upto, mincount, lcaheaderlines, formatted_keywords)
+    write_shortened_bam(in_bam, out_lca, out_bam, stranded, lcaheaderlines, minsim) 
 
-    # calculate and write subs and stats files.
-    nodedata = gather_subs_and_kmers(out_bam, out_lca, k = k, upto = upto,stranded = stranded, lcaheaderlines = lcaheaderlines)
-    parse_and_write_node_data(nodedata,out_stats,out_subs,k,stranded)  
+    # calculate and write subs and stats files.
+    nodedata = gather_subs_and_kmers(out_bam, out_lca, k=k, upto=upto, stranded=stranded, lcaheaderlines=lcaheaderlines)
+    parse_and_write_node_data(nodedata, out_stats, out_subs, k, stranded)  
+
 
 
 if __name__ == "__main__":
@@ -696,12 +708,10 @@ if __name__ == "__main__":
     # Initialize
     parser = argparse.ArgumentParser(
         description="BamDam processes LCA and bam files for ancient environmental DNA.",
-        epilog="\
-          Written by Bianca De Sanctis in 2024. For assistance please contact bddesanctis@gmail.com.")
-    
+        epilog="Written by Bianca De Sanctis in 2024. For assistance please contact bddesanctis@gmail.com.")
     
     # Mandatory arguments
-    parser.add_argument("--in_lca", type=str, required=True, help="Path to the original (sorted) LCA fil (required)")
+    parser.add_argument("--in_lca", type=str, required=True, help="Path to the original (sorted) LCA file (required)")
     parser.add_argument("--in_bam", type=str, required=True, help="Path to the original (sorted) BAM file (required)")
     parser.add_argument("--out_lca", type=str, required=True, help="Path to the short output LCA file (required)")
     parser.add_argument("--out_bam", type=str, required=True, help="Path to the short output BAM file (required)")
@@ -714,7 +724,8 @@ if __name__ == "__main__":
     parser.add_argument("--k", type=int, default=5, help="Value of k for kmer complexity calculations (default: 5)")
     parser.add_argument("--upto", type=str, default="family", help="Keep nodes up to and including this tax threshold, use root to disable (default: family)")
     parser.add_argument("--minsim", type=float, default=0.95, help="Minimum similarity to reference to keep a read; must match ngslca min similarity (default: 0.95)")
-    parser.add_argument("--exclude_keywords", type=str, nargs='+', default=[], help="Keyword(s) in LCA file for filtering to exclude lines containing (default: none)")
+    parser.add_argument("--exclude_keywords", type=str, nargs='+', default=[], help="Keyword(s) to exclude when filtering (default: none)")
+    parser.add_argument("--exclude_keyword_file", type=str, default=None, help="File of keywords to exclude when filtering, one per line (default: none)")
 
     if '--help' in sys.argv or '-h' in sys.argv:
         parser.print_help()
@@ -737,7 +748,21 @@ if __name__ == "__main__":
         parser.error(f"Input LCA path does not exist: {args.in_lca}")
     if not os.path.exists(args.in_bam):
         parser.error(f"Input BAM path does not exist: {args.in_bam}")
+
+    # Ensure only one of exclude_keywords or exclude_keyword_file is provided
+    if args.exclude_keywords and args.exclude_keyword_file:
+        parser.error("You can only provide one of --exclude_keywords or --exclude_keyword_file, not both.")
     
+    # Initialize exclude_keywords
+    exclude_keywords = args.exclude_keywords
+    
+    # Read exclude keywords from file if provided
+    if args.exclude_keyword_file:
+        if not os.path.exists(args.exclude_keyword_file):
+            parser.error(f"Exclude keyword file path does not exist: {args.exclude_keyword_file}")
+        with open(args.exclude_keyword_file, 'r') as f: # remove quotation marks if they're in the file 
+            exclude_keywords.extend([line.strip().strip('"').strip("'") for line in f if line.strip()])
+
     # Print message before calling main
     print("Hello! You are running BamDam with the following arguments:")
     print(f"in_lca: {args.in_lca}")
@@ -751,16 +776,14 @@ if __name__ == "__main__":
     print(f"k: {args.k}")
     print(f"upto: {args.upto}")
     print(f"minsim: {args.minsim}")
-    print(f"exclude_keywords: {args.exclude_keywords}")
+    if args.exclude_keyword_file:
+        print(f"exclude_keywords: Loaded from {args.exclude_keyword_file}")
+    else:
+        print(f"exclude_keywords: {exclude_keywords}")
  
     main(
         args.in_lca, args.in_bam, args.out_lca, args.out_bam, 
         args.out_stats, args.out_subs, args.stranded, 
         args.mincount, args.k, args.upto, args.minsim, 
-        args.exclude_keywords
+        exclude_keywords
     )
-
-
-
-
-
