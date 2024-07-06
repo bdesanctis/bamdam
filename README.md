@@ -42,7 +42,7 @@ chmod +x PlotPMD.R
 Input: Bam and LCA files. Output: Shortened bam, shortened lca, stats and subs files.
 
 The main script BamDam.py will:
-1. Shorten the LCA file to only nodes which are equal to or below your tax threshold, meet your minimum read count (or are below nodes which meet your minimum read count). You may also give it a list of keywords or phrases and it will exclude all lines including any of those keywords or phrases (e.g. Homonidae). 
+1. Shorten the LCA file to only nodes which are equal to or below your tax threshold, meet your minimum read count (or are below nodes which meet your minimum read count). You may also give it a list or file of keywords (tax IDs, full tax names, or full tax entries) it will exclude all lines including any of those keywords (e.g. Homonidae, "Homo sapiens", 4919, etc). 
 2. Shorten the bam file to include only reads which appear in the newly shortened LCA file. This can make 100-1000x or even more difference in the size of a bam file after typical ancient eDNA mapping steps. It will also annotate the new bam file with PMD scores as in PMDTools (in the DS:Z field).
 3. Gather various statistics per node and write to a stats file, sorted by total reads assigned. More information detailing this file is below.
 4. Gather substitution patterns per node and write to a subs file, sorted in the same order as the stats file (so line n of the stats file should correspond to line n of the subs file). 
@@ -54,24 +54,24 @@ Please ensure your input bam is sorted in the same order as your input lca file,
 Usage and options: 
 ```sh
 usage: BamDam.py [-h] --in_lca IN_LCA --in_bam IN_BAM --out_lca OUT_LCA --out_bam OUT_BAM --out_stats OUT_STATS --out_subs OUT_SUBS --stranded STRANDED
-                 [--mincount MINCOUNT] [--k K] [--upto UPTO] [--minsim MINSIM] [--exclude_keywords EXCLUDE_KEYWORDS [EXCLUDE_KEYWORDS ...]]
+                 [--mincount MINCOUNT] [--k K] [--upto UPTO] [--minsim MINSIM] [--exclude_keywords EXCLUDE_KEYWORDS [EXCLUDE_KEYWORDS ...]] [--exclude_keyword_file EXCLUDE_KEYWORD_FILE]
 
 options:
   -h, --help            show this help message and exit
-  --in_lca IN_LCA       Path to the original (sorted) LCA fil (required)
-  --in_bam IN_BAM       Path to the original (sorted) BAM file (required)
-  --out_lca OUT_LCA     Path to the short output LCA file (required)
-  --out_bam OUT_BAM     Path to the short output BAM file (required)
-  --out_stats OUT_STATS
-                        Path to the output stats file (required)
-  --out_subs OUT_SUBS   Path to the output subs file (required)
-  --stranded STRANDED   Either ss for single stranded or ds for double stranded (required)
-  --mincount MINCOUNT   Minimum read count to keep a node (default: 5)
-  --k K                 Value of k for kmer complexity calculations (default: 5)
-  --upto UPTO           Keep nodes up to and including this tax threshold, use root to disable (default: family)
-  --minsim MINSIM       Minimum similarity to reference to keep a read; must match ngslca min similarity (default: 0.95)
-  --exclude_keywords EXCLUDE_KEYWORDS [EXCLUDE_KEYWORDS ...]
-                        Keyword(s) in LCA file for filtering to exclude lines containing (default: none)
+  --in_lca              Path to the original (sorted) LCA fil (required)
+  --in_bam              Path to the original (sorted) BAM file (required)
+  --out_lca             Path to the short output LCA file (required)
+  --out_bam             Path to the short output BAM file (required)
+  --out_stats           Path to the output stats file (required)
+  --out_subs            Path to the output subs file (required)
+  --stranded            Either ss for single stranded or ds for double stranded (required)
+  --mincount            Minimum read count to keep a node (default: 5)
+  --k                   Value of k for kmer complexity calculations (default: 5)
+  --upto                Keep nodes up to and including this tax threshold, use root to disable (default: family)
+  --minsim              Minimum similarity to reference to keep a read; must match ngslca min similarity (default: 0.95)
+  --exclude_keywords    Keyword(s) to exclude when filtering (default: none)
+  --exclude_keyword_file  File of keywords to exclude when filtering, one per line (default: none)
+
 ```
 
 Example usage:
