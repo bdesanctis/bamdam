@@ -9,7 +9,7 @@ import math
 import argparse
 import os
 
-def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,lcaheaderlines,exclude_keywords):
+def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,lcaheaderlines,exclude_keywords, exclude_under):
 
     print("\nWriting a filtered LCA file...")
 
@@ -22,22 +22,26 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,lcaheader
             next(file) 
         for line in file:
             if upto in line:
-                if any(keyword in line for keyword in exclude_keywords):
-                    continue # don't keep any of the exclusions
+                if exclude_under and any(keyword in line for keyword in exclude_keywords): # checks all nodes in the path 
+                    continue
+                    # if you want to exclude all nodes underneath the ones you specified too, all you have to do is look for all the keywords in every line 
                 else:
                     entry = line.strip().split('\t')
                     if len(entry) > 1:  
                         fields = entry[1:] # can ditch the read id 
-                        keepgoing = True; field = 0
-                        while keepgoing:
-                            number = fields[field].split(':')[0]
-                            if number in number_counts:
-                                number_counts[number] += 1
-                            else:
-                                number_counts[number] = 1
-                            if upto in fields[field]:
-                                keepgoing = False
-                            field +=1 
+                        if (not exclude_under) and any(keyword in fields[0] for keyword in exclude_keywords):
+                            continue # this only checks the node the read is actually assigned to 
+                        else:
+                            keepgoing = True; field = 0
+                            while keepgoing:
+                                taxid = fields[field].split(':')[0]
+                                if taxid in number_counts:
+                                    number_counts[taxid] += 1
+                                else:
+                                    number_counts[taxid] = 1
+                                if upto in fields[field]:
+                                    keepgoing = False
+                                field +=1 
 
     goodnodes = [key for key, count in number_counts.items() if count >= mincount]
     # these are the nodes that have at least the min count of reads assigned to them (or below them), and which are at most upto
@@ -55,9 +59,11 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,lcaheader
                     print("Alert! You have duplicate entries in your LCA file, for example " + newreadname + ". That's a problem. You should fix this (e.g. using uniq) and re-run BamDam.")
                 if upto in line:
                     # you can just go straight to the upto level and check if that node has high enough count 
-                    if any(keyword in line for keyword in exclude_keywords):
-                        continue # don't keep the ones that have the keywords
-                    else:                    
+                    if exclude_under and any(keyword in line for keyword in exclude_keywords):
+                        continue # don't keep the ones that have the keywords anywhere if exclude_under is true
+                    elif (not exclude_under) and any(keyword in entry[1] for keyword in exclude_keywords):
+                        continue # don't keep the ones that have the keywords in their assignment if exclude_under is false
+                    else:
                         for field in entry[1:]:
                             if f":{upto}" in field:
                                 number = field.split(':')[0]
@@ -669,7 +675,7 @@ def parse_and_write_node_data(nodedata, stats_path, subs_path, k, stranded):
     print("Wrote final stats and subs files. Done!")
 
 
-def main(in_lca, in_bam, out_lca, out_bam, out_stats, out_subs, stranded, mincount, k, upto, minsim, exclude_keywords):
+def main(in_lca, in_bam, out_lca, out_bam, out_stats, out_subs, stranded, mincount, k, upto, minsim, exclude_keywords, exclude_under):
 
     # this seems silly but i might as well only do it once instead of inside every function
     lcaheaderlines = 0
@@ -678,23 +684,13 @@ def main(in_lca, in_bam, out_lca, out_bam, out_stats, out_subs, stranded, mincou
             if "root" in lcaline:
                 break
             lcaheaderlines += 1
-
-    # Format exclude keywords
-    formatted_keywords = []
-    for keyword in exclude_keywords:
-        if keyword.isdigit():
-            formatted_keywords.append(f":{keyword}\t")
-        elif keyword.isalpha():
-            formatted_keywords.append(f":{keyword}:")
-        else:
-            formatted_keywords.append(keyword)  # Assuming no formatting needed for mixed types
-
+ 
     # write the shorter lca and bam files. remove reads which:
     #  - don't meet your tax threshold 
     #  - don't meet your min node read count 
     #  - don't appear in the lca file (previously filtered, or just got filtered from crap evenness of coverage, or couldn't get assigned due to some taxonomy issue)
     # While we're at it, add a PMD tag to each read in the shortened bam file. 
-    write_shortened_lca(in_lca, out_lca, upto, mincount, lcaheaderlines, formatted_keywords)
+    write_shortened_lca(in_lca, out_lca, upto, mincount, lcaheaderlines, exclude_keywords,exclude_under)
     write_shortened_bam(in_bam, out_lca, out_bam, stranded, lcaheaderlines, minsim) 
 
     # calculate and write subs and stats files.
@@ -707,10 +703,9 @@ if __name__ == "__main__":
     
     # Initialize
     parser = argparse.ArgumentParser(
-        description="BamDam processes LCA and bam files for ancient environmental DNA.",
-        epilog="Written by Bianca De Sanctis in 2024. For assistance please contact bddesanctis@gmail.com.")
+        description="BamDam processes LCA and bam files for ancient environmental DNA. By Bianca De Sanctis bddesanctis@gmail.com.")
     
-    # Mandatory arguments
+    # Mandatory argument
     parser.add_argument("--in_lca", type=str, required=True, help="Path to the original (sorted) LCA file (required)")
     parser.add_argument("--in_bam", type=str, required=True, help="Path to the original (sorted) BAM file (required)")
     parser.add_argument("--out_lca", type=str, required=True, help="Path to the short output LCA file (required)")
@@ -726,6 +721,7 @@ if __name__ == "__main__":
     parser.add_argument("--minsim", type=float, default=0.95, help="Minimum similarity to reference to keep a read; must match ngslca min similarity (default: 0.95)")
     parser.add_argument("--exclude_keywords", type=str, nargs='+', default=[], help="Keyword(s) to exclude when filtering (default: none)")
     parser.add_argument("--exclude_keyword_file", type=str, default=None, help="File of keywords to exclude when filtering, one per line (default: none)")
+    parser.add_argument("--exclude_under", action='store_true', help="Set this flag if you also want to exclude all nodes underneath the ones you've specified")
 
     if '--help' in sys.argv or '-h' in sys.argv:
         parser.print_help()
@@ -751,10 +747,13 @@ if __name__ == "__main__":
 
     # Ensure only one of exclude_keywords or exclude_keyword_file is provided
     if args.exclude_keywords and args.exclude_keyword_file:
-        parser.error("You can only provide one of --exclude_keywords or --exclude_keyword_file, not both.")
+        parser.error("Please only provide one of --exclude_keywords or --exclude_keyword_file, not both.")
     
     # Initialize exclude_keywords
     exclude_keywords = args.exclude_keywords
+    # Make it a list if it's not already
+    if type(exclude_keywords) != type([]):
+        exclude_keywords = [exclude_keywords]
     
     # Read exclude keywords from file if provided
     if args.exclude_keyword_file:
@@ -777,13 +776,16 @@ if __name__ == "__main__":
     print(f"upto: {args.upto}")
     print(f"minsim: {args.minsim}")
     if args.exclude_keyword_file:
-        print(f"exclude_keywords: Loaded from {args.exclude_keyword_file}")
-    else:
+        print(f"exclude_keywords: loaded from {args.exclude_keyword_file}")
+    if args.exclude_keywords:
         print(f"exclude_keywords: {exclude_keywords}")
+    if args.exclude_keyword_file or exclude_keywords:
+        print(f"exclude_under: {args.exclude_under}")
  
     main(
         args.in_lca, args.in_bam, args.out_lca, args.out_bam, 
         args.out_stats, args.out_subs, args.stranded, 
         args.mincount, args.k, args.upto, args.minsim, 
-        exclude_keywords
+        exclude_keywords, args.exclude_under
     )
+
