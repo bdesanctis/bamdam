@@ -42,7 +42,7 @@ chmod +x PlotPMD.R
 Input: Bam and LCA files. Output: Shortened bam, shortened lca, stats and subs files.
 
 The main script BamDam.py will:
-1. Shorten the LCA file to only nodes which are equal to or below your tax threshold, meet your minimum read count (or are below nodes which meet your minimum read count). You may also give it a list or file of keywords (tax IDs, full tax names, or full tax entries) it will exclude all lines including any of those keywords (e.g. Homonidae, "Homo sapiens", 4919, etc). 
+1. Shorten the LCA file to only nodes which are equal to or below your tax threshold, which meet your minimum read count, or are below nodes which meet your minimum read count. You may also give it a list or file of tax identifiers and it will exclude all reads assigned to that node, and optionally all reads assigned to nodes below that node as well (--exclude_under). For exclusions, you can give it tax IDs, full tax names, or full tax entries; e.g. Homonidae, "Homo sapiens", 4919, etc, but ideally use full tax paths like "4919:Homo sapiens:species".
 2. Shorten the bam file to include only reads which appear in the newly shortened LCA file. This can make 100-1000x or even more difference in the size of a bam file after typical ancient eDNA mapping steps. It will also annotate the new bam file with PMD scores as in PMDTools (in the DS:Z field).
 3. Gather various statistics per node and write to a stats file, sorted by total reads assigned. More information detailing this file is below.
 4. Gather substitution patterns per node and write to a subs file, sorted in the same order as the stats file (so line n of the stats file should correspond to line n of the subs file). 
@@ -71,6 +71,7 @@ options:
   --minsim              Minimum similarity to reference to keep a read; must match ngslca min similarity (default: 0.95)
   --exclude_keywords    Keyword(s) to exclude when filtering (default: none)
   --exclude_keyword_file  File of keywords to exclude when filtering, one per line (default: none)
+  --exclude_under       Set this flag if you also want to exclude all nodes underneath the ones you've specified
 
 ```
 Example usage:
@@ -89,6 +90,7 @@ python BamDam.py \
     --minsim 0.95 \
     --exclude_keywords "Homonidae" "Felidae" 
 ```
+
 ### Explanation of the output stats file columns
 - **TaxNodeID**: The tax node ID from the lca file.
 - **TaxName**: The tax name from the lca file.
