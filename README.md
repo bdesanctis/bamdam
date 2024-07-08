@@ -9,22 +9,18 @@
 
 ## Description
 
-Important note - this software is still in development!
+Warning - this software is still in development. Things are changing often here, and more is on the way!
 
-Please contact me with any issues, unexpected behavior, or requests! bddesanctis@gmail.com
+Please contact me with any issues, unexpected behavior, or requests. bddesanctis@gmail.com
 
-Welcome to bamdam! The goal of this toolkit is to provide functionality after shotgun sequencing aeDNA reads have been mapped to a reference database and run through [ngsLCA](https://github.com/miwipe/ngsLCA) using the reference database taxonomy to obtain a .lca file. If you have a lot of data, long term storing these often giant bams post-mapping can be annoying, so the first point of bamdam is to write (much) smaller versions that still include all the relevant information for the project. The second point of bamdam is to compute a ton of read set metrics to determine if a taxonomic node looks like a real ancient taxa. 
+Welcome to bamdam! The goal of this toolkit is to provide functionality after shotgun sequencing aeDNA reads have been mapped to a reference database and run through [ngsLCA](https://github.com/miwipe/ngsLCA) using the reference database taxonomy to obtain a .lca file. If you have a lot of data, long term storing these often giant bams post-mapping can be annoying, so the first point of bamdam is to write (much) smaller versions that still include all the relevant information for the project. The second point of bamdam is to compute a ton of read set metrics to determine if a taxonomic node looks like a real ancient taxa, rather than a modern environmental, lab, or database contaminant. 
 
 There are also the following accessory scripts:
 - PlotDamage.R for smiley plots,
 - extractreads.py for quickly extracting reads from a fq or bam belonging to a specific tax id(s), and
 - PlotPMD.R for plotting the PMD score distribution of a taxa. 
 
-This software is not appropriate for metabarcoding data. 
-
 Bamdam was heavily inspired by [metaDMG](https://github.com/metaDMG-dev/metaDMG-cpp) and [filterBAM](https://github.com/genomewalker/bam-filter). It is not particularly optimized for speed, and doesn't thread yet. On the other hand, it doesn't ever read a whole file into memory, so it shouldn't need that much RAM (please tell me if you manage to crash it and how). It can subset a 40GB bam to family level in an hour on my laptop and this should scale close to linearly. That feels sufficient to me for now - let me know if it's not for you. I could implement threading.
-
-More to come, probably.
 
 ## Installation
 
@@ -159,16 +155,17 @@ samtools view onlysalix.bam | grep -o 'DS:Z:[^ ]*' | sed 's/DS:Z://' | ./PlotPMD
 ```
 ## Coming soon
 Aka my to do list, suggestions welcome :)
-- [priority!!!] make it so the new bam also has a shorter header, right now it is just copying the old header and that is mildly ridiculous
-- consider evenness of coverage calculation 
+- [priority!] make it so the new bam also has a shorter header, right now it is just copying the old header and that is mildly ridiculous
+   evenness of coverage calculation 
 - [maybe] write another plotting function for read length distribution
-- [maybe] write a function to add some metadmg parameters to the output stats file 
-- [maybe] write a function to combine multiple stats and subs files from multiple different files, like from ellesmere . then you can combine the "read-pulling-out function" with this and make a full-on damage distribution for different taxa in ellesmere! 
-- [maybe] rory: are more strands ending in purines (A vs G) than anything else? could check this! https://www.pnas.org/doi/abs/10.1073/pnas.0704665104 
-- [probably] yucheng: derive a kmer distribution from the modern reads, and remove reads with many of those kmers from ancient samples
+- [maybe] are more strands ending in purines (A vs G) than anything else? could check this! https://www.pnas.org/doi/abs/10.1073/pnas.0704665104 
+- [probably] derive a kmer distribution from the modern reads, and remove reads with many of those kmers from ancient samples
 - eventually - null damage distribution?
 - add some example data
-- write down a full workflow. essentially i am thinking map, remove unnecessary headers, merge, sort, bamfilter, ngslca, bamdam, perhaps metadmg too, subset lca files based on the results down to just the taxa you want, then ngslca r package for removing control taxa, etc and making figures. maybe add yucheng's kmer profiling before mapping.
+- write down a full workflow
+- implement some functionality for combining samples , eg. multi-sample damage plots 
+
+
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.
 BamDam was written by Bianca De Sanctis in 2024. For assistance please contact bddesanctis@gmail.com.
