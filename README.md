@@ -17,7 +17,7 @@ Welcome to bamdam! The goal of this toolkit is to provide functionality after ca
 
 There are also the following accessory scripts:
 - PlotDamage.R for smiley plots,
-- extractreads.py for quickly extracting reads from a fq or bam belonging to a specific tax id(s), and
+- extractreads.py for quickly extracting reads from a bam belonging to a specific tax id(s), and
 - PlotPMD.R for plotting the PMD score distribution of a taxa. 
 
 Bamdam was heavily inspired by [metaDMG](https://github.com/metaDMG-dev/metaDMG-cpp) and [filterBAM](https://github.com/genomewalker/bam-filter). It is not particularly optimized for speed, and doesn't thread yet. On the other hand, it doesn't ever read a whole file into memory, so it shouldn't need that much RAM (please tell me if you manage to crash it and how). It can subset a 40GB bam to family level in an hour on my laptop and this should scale close to linearly. That feels sufficient to me for now - let me know if it's not for you. I could implement threading.
@@ -174,7 +174,8 @@ Aka my to do list, suggestions welcome
 - [probably] derive a kmer distribution from the modern reads, and remove reads with many of those kmers from ancient samples
 - eventually - null damage distribution?
 - add some example data
-- implement some functionality for combining samples , eg. multi-sample damage plots 
+- implement some functionality for combining samples , eg. multi-sample damage plots
+- make extractreads.py work on fqs too
 
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.
