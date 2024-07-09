@@ -43,7 +43,7 @@ The main script BamDam.py will:
 3. Gather various statistics per node and write to a stats file, sorted by total reads assigned. More information detailing this file is below.
 4. Gather substitution patterns per node and write to a subs file, sorted in the same order as the stats file (so line n of the stats file should correspond to line n of the subs file). 
 
-You can then look through your stats file and decide what seems real and ancient to you. You may also plot damage plots for individual tax IDs using an R script and the subs file which is detailed in the next section. The subs file should be fairly self-explanatory in formatting, if you are interested in looking at it.
+You may also plot damage plots for individual tax IDs by inputting the subs file into an R script, which is detailed in the next section. 
 
 Please ensure your input bam is sorted in the same order as your input lca file, and that every read in your LCA file is also in your bam file, both of which will be true by default if you use fresh ngsLCA output. On the other hand, bamdam will be fine if there are reads in your bam that are not in your LCA file, which means you can pre-subset your LCA file if you'd like. Pre-subsetting your lca file may give a speed-up and will end you up with an even smaller bam, which you should consider doing if you only wanted to keep eukaryotes, for example (e.g.: grep "Eukaryot" in.lca > out.lca). Also, for now, please provide a ngsLCA-formatted lca file, not a metaDMG-formatted lca file (they have slightly different formats).
 
