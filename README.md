@@ -168,7 +168,6 @@ samtools view onlysalix.bam | grep -o 'DS:Z:[^ ]*' | sed 's/DS:Z://' | ./PlotPMD
 ## Coming soon
 Aka my to do list, suggestions welcome 
 - [priority!] make it so the new bam also has a shorter header, right now it is just copying the old header and that is mildly ridiculous
-   evenness of coverage calculation 
 - [maybe] write another plotting function for read length distribution
 - [maybe] are more strands ending in purines (A vs G) than anything else? could check this! https://www.pnas.org/doi/abs/10.1073/pnas.0704665104 
 - [probably] derive a kmer distribution from the modern reads, and remove reads with many of those kmers from ancient samples
