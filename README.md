@@ -105,14 +105,17 @@ python BamDam.py \
 - **Damaged+1**: The raw proportion of reads assigned to that node or underneath where every alignment of that read had a C->T on the 5' (+1) position.
 - **Damaged-1**: The raw proportion of reads assigned to that node or underneath where every alignment of that read had a C->T if single stranded, or a G->A if double stranded, on the 3' (-1) position.
 - **taxpath**: The taxonomic path from the lca file.
-- 
+
 In all cases where it is unclear, each read (not each alignment) is weighted equally.
 
 You will notice your new shorter bam file is also annotated with PMD scores. A PMD score is calculated per alignment, and it tells you the log likelihood ratio of your read alignment being ancient over not. So, PMD = 2 is like "this read is double as likely to be ancient than it is modern". PMD scores are from [Skoglund et al. 2014](https://doi.org/10.1073/pnas.131893411) - have a look at the first figure to understand them a bit better. The parameters of the PMD score calculation are in the Python script, not user changeable other than editing the code, and I haven't played around with them yet. So it might change a bit at some point, but I think they are sufficiently reliable already for evaluating damage when combined with the other damage metrics.
 
 ## Accessory scripts
+
 ### Damage plotting script
+
 If you want to look at the damage smiley plot of a specific taxa, there is also an R script PlotDamage.R that works from the command line. It reads in the subs file written by BamDam.py, and needs to know a tax id (ideally) or a unique tax name (less ideally). You can find the relevant tax id by grep-ing the tax name in the lca file. 
+
 Usage: 
 ```sh
 ./PlotDamage.R [options]
@@ -140,6 +143,7 @@ Example double-stranded plot (this one has a lot of reads contributing to it, th
 ### Script to extract reads
 
 This is just like a fancy grep command. You could write a bash command to do the same thing, but it would probably be slower. This script leverages the fact that the lca and bam files are in the same order. Just like grep, you can use the full tax identifier, e.g. "48230:Dryas:genus", to be totally sure things will work correctly.
+
 Usage:
 ```sh
 extractreads.py [-h] --in_lca IN_LCA --in_bam IN_BAM --out_bam OUT_BAM --keyword KEYWORD
@@ -158,8 +162,7 @@ python extractreads.py --in_lca in.lca --in_bam in.bam --keyword "Salix" --out_b
 
 ### PMD distribution plotting script
 
-This is a very basic histogram plotting wrapper. Once you've extracted a bam file of reads associated to a specific node, you can plot its PMD score distribution. In theory you could also use this script to plot PMD scores for the entire bam if you'd like, but it would be slow and might crash if the bam is too big.
-The following will extract all PMD scores from a bam file, feed them into a basic R histogram plotting script, and save the histogram to "salixPMDs.png" with the title "Salix PMD scores":
+This is a very basic histogram plotting wrapper. Once you've extracted a bam file of reads associated to a specific node, you can plot its PMD score distribution. In theory you could also use this script to plot PMD scores for the entire bam if you'd like, but it would be slow and might crash if the bam is too big. The following will extract all PMD scores from a bam file, feed them into a basic R histogram plotting script, and save the histogram to "salixPMDs.png" with the title "Salix PMD scores":
 
 ```sh
 samtools view onlysalix.bam | grep -o 'DS:Z:[^ ]*' | sed 's/DS:Z://' | ./PlotPMD.R -o salixpmds.png -t "Salix"
