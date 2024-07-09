@@ -20,7 +20,7 @@ There are also the following accessory scripts:
 - extractreads.py for quickly extracting reads from a bam belonging to a specific tax id(s), and
 - PlotPMD.R for plotting the PMD score distribution of a taxa. 
 
-Bamdam was heavily inspired by [metaDMG](https://github.com/metaDMG-dev/metaDMG-cpp) and [filterBAM](https://github.com/genomewalker/bam-filter). It is not particularly optimized for speed, and doesn't thread yet. On the other hand, it doesn't ever read a whole file into memory, so it shouldn't need that much RAM (please tell me if you manage to crash it and how). It can subset a 40GB bam to family level in an hour on my laptop and this should scale close to linearly. That feels sufficient to me for now - let me know if it's not for you. I could implement threading.
+Bamdam was heavily inspired by [metaDMG](https://github.com/metaDMG-dev/metaDMG-cpp) and [filterBAM](https://github.com/genomewalker/bam-filter). It is not particularly optimized for speed, and doesn't thread yet. On the other hand, it doesn't ever read a whole file into memory, so it shouldn't need that much RAM (please tell me if you manage to crash it and how). It can subset a 40GB bam to family level in an hour on my laptop and this should scale close to linearly, which feels sufficient for now.
 
 ## Installation
 
