@@ -169,7 +169,7 @@ samtools view onlysalix.bam | grep -o 'DS:Z:[^ ]*' | sed 's/DS:Z://' | ./PlotPMD
 ```
 
 ## Coming soon
-Aka my to do list, suggestions welcome. I will probably do most if not all of the below in the next two months:
+Aka my to do list, suggestions welcome. I intend to do most if not all of the below in the next 2-3 months:
 - [priority] make it so the new bam also has a shorter header, right now it is just copying the old header and that is mildly ridiculous
 - evenness of coverage, probably immediately after shortening the bam + lca
 - split functions to shorten and compute stats into two i think
