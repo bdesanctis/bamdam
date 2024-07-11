@@ -38,9 +38,9 @@ chmod +x PlotPMD.R
 Input: Bam and LCA files. Output: Shortened bam, shortened lca, stats and subs files.
 
 The main script BamDam.py will:
-1. Shorten the LCA file to only nodes which are equal to or below your tax threshold, which meet your minimum read count, or are below nodes which meet your minimum read count. You may also give it a list or file of tax identifiers and it will exclude all reads assigned to that node, and optionally all reads assigned to nodes below that node as well (--exclude_under). For exclusions, you can give it tax IDs, full tax names, or full tax entries; e.g. Homonidae, "Homo sapiens", 4919, etc, but ideally use full tax paths like "4919:Homo sapiens:species".
+1. Shorten the LCA file to only nodes which are (equal to or below your tax threshold AND which meet your minimum read count), OR are below a node which meets that criteria. You may also give it a list OR file of tax identifiers, and it will exclude all reads assigned to those nodes, and optionally all reads assigned to any nodes below those nodes as well (--exclude_under). For exclusions, you can give it tax IDs, full tax names, or full tax entries; e.g. Homonidae, "Homo sapiens", 4919, etc, but ideally use full tax paths like "4919:Homo sapiens:species".
 2. Shorten the bam file to include only reads which appear in the newly shortened LCA file. This can make 100-1000x or even more difference in the size of a bam file after typical ancient eDNA mapping steps. It will also annotate the new bam file with PMD scores as in PMDTools (in the DS:Z field).
-3. Gather various statistics per node and write to a stats file, sorted by total reads assigned. More information detailing this file is below.
+3. Gather various statistics per node and write to a stats file, sorted by total reads assigned. More information detailing these statistics is below.
 4. Gather substitution patterns per node and write to a subs file, sorted in the same order as the stats file (so line n of the stats file should correspond to line n of the subs file). 
 
 You may also plot damage plots for individual tax IDs by inputting the subs file into an R script, which is detailed in the next section. 
@@ -63,7 +63,7 @@ options:
   --stranded            Either ss for single stranded or ds for double stranded (required)
   --mincount            Minimum read count to keep a node (default: 5)
   --k                   Value of k for kmer complexity calculations (default: 5)
-  --upto                Keep nodes up to and including this tax threshold, use root to disable (default: family)
+  --upto                Tax threshold, use root to disable (default: family)
   --minsim              Minimum similarity to reference to keep a read; must match ngslca min similarity (default: 0.95)
   --exclude_keywords    Keyword(s) to exclude when filtering (default: none)
   --exclude_keyword_file  File of keywords to exclude when filtering, one per line (default: none)
