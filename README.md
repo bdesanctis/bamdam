@@ -9,7 +9,7 @@
 
 ## Description
 
-Warning - this software is still in development. Things are changing often here, and more is on the way!
+WARNING - this software is still in development. Things are changing often here!
 
 Please contact me with any issues, unexpected behavior, or requests. bddesanctis@gmail.com
 
