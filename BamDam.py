@@ -155,7 +155,7 @@ def get_mismatches(seq, cigar, md):
     reconstructs a nucleotide mismatch + position table given the query, cigar and md strings
     '''
 
-    cig = re.findall('\d+\D', cigar)
+    cig = re.findall(r'\d+\D', cigar)
     md_pattern = re.compile(r'\d+|\^[A-Za-z]+|[A-Za-z]')
     md_list = md_pattern.findall(md)
 
@@ -172,6 +172,7 @@ def get_mismatches(seq, cigar, md):
 
         if cat == 'S': # soft clip
             read_seq += seq[read_pos:read_pos + bases] # include the bases in the reconstructed read 
+            # you should probably edit this, we won't want to include soft clipped bases, i don't think 
             continue
 
         elif cat in ['M', '=', 'X']: # match
@@ -788,4 +789,3 @@ if __name__ == "__main__":
         args.mincount, args.k, args.upto, args.minsim, 
         exclude_keywords, args.exclude_under
     )
-
