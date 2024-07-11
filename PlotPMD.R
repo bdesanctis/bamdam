@@ -20,6 +20,11 @@ option_list <- list(
 opt_parser <- OptionParser(option_list=option_list)
 opt <- parse_args(opt_parser)
 
+# Check if no arguments are provided
+if (length(commandArgs(trailingOnly=TRUE)) == 0) {
+  stop("No command line arguments provided. Please provide necessary arguments for output file and title.")
+}
+
 # Open the connection to standard input
 con <- file("stdin")
 open(con)
@@ -29,6 +34,11 @@ numbers <- readLines(con)
 
 # Close the connection explicitly
 close(con)
+
+# Check if stdin is empty
+if (length(numbers) == 0 || all(numbers == "")) {
+  stop("No input provided via stdin. Please provide PMD scores through standard input.")
+}
 
 # Convert to numeric and filter out non-finite values and values outside the x-axis range
 numbers <- as.numeric(numbers)
