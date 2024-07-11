@@ -169,16 +169,28 @@ samtools view onlysalix.bam | grep -o 'DS:Z:[^ ]*' | sed 's/DS:Z://' | ./PlotPMD
 ```
 
 ## Coming soon
-Aka my to do list, suggestions welcome 
-- [priority!] make it so the new bam also has a shorter header, right now it is just copying the old header and that is mildly ridiculous
-- [maybe] write another plotting function for read length distribution
-- [maybe] are more strands ending in purines (A vs G) than anything else? could check this! https://www.pnas.org/doi/abs/10.1073/pnas.0704665104 
-- [probably] derive a kmer distribution from the modern reads, and remove reads with many of those kmers from ancient samples
+Aka my to do list, suggestions welcome. I will probably do most if not all of the below in the next two months:
+- [priority] make it so the new bam also has a shorter header, right now it is just copying the old header and that is mildly ridiculous
+- evenness of coverage, probably immediately after shortening the bam + lca
+- split functions to shorten and compute stats into two i think
+- write another simple plotting function for read length distribution for a specific taxa
+- are more strands ending in purines (A vs G) than anything else? could check this eg https://www.pnas.org/doi/abs/10.1073/pnas.0704665104 
+- derive a kmer distribution from the modern reads, and remove reads with many of those kmers from ancient samples, maybe once you're already on the bams so you can see what you're removing, could do this simultaneously with evenness of coverage
 - eventually - null damage distribution?
 - add some example data
 - implement some functionality for combining samples , eg. multi-sample damage plots
+- clarify kmer metrics
+- clarify y axis on damage plots is prop of reads not prop of subs
+- make minsim params match ngslca ones , -editdistmin -editdistmax -simscorelow and -simscorehigh
 - make extractreads.py work on fqs too
+- larger-picture workflow including remove unnecessary headers and a bwa modification/little script for multimapping (maybe a separate repo for a bwa fork though)
+- add a root line to the end of the subs file for quick whole-library damage assessment
+- normalized c>t on +1, -1 minus c>t in the middle eg [+10,-10]
+- conditional damage metric? prop of reads with c>t on 5' that also have g>a on 3'. this is a leipzig thing
+- write a function to combine multi sample subs+stats files
+- multi sample damage plots
 
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.
+
 BamDam was written by Bianca De Sanctis in 2024. For assistance please contact bddesanctis@gmail.com.
