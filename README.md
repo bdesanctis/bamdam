@@ -19,7 +19,7 @@ bamdam shrink --help
 bamdam compute --help
 ```
 
-Bamdam extract also exists but you probably won't need it right now. Bamdam plot is not finished and will not work just yet.
+Bamdam extract also exists but you probably won't need it right now. Bamdam plot is not finished and will not work just yet. Accessory scripts in this repo are no longer relevant. 
 
 Big readme update coming soon :)
 
