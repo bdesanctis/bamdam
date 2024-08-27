@@ -1,5 +1,29 @@
 # bamdam: A post-mapping toolkit for ancient environmental DNA capture or shotgun sequencing data
 
+## Update Aug 27 
+
+I pushed a major update to the main bamdam script just now. I have not had time to update the readme below yet. In the meantime, here is a small tutorial on the new code structure. Assume you have your readname-sorted bam file A.bam and the file A.lca you got after running ngsLCA on A.bam. To use base bamdam in double stranded mode, do:
+
+```sh
+bamdam shrink --in_bam A.bam --in_lca A.lca --out_bam A2.bam --out_lca A2.lca --stranded ds
+bamdam compute --in_bam A2.bam --in_lca A2.lca --out_stats A_stats.txt --out_subs A_subs.txt --stranded ds
+```
+
+and then you will obtain a big file A_stats.txt containing many useful metrics. The most important ones are: (1) duplicity, or the number of times an average 29-mer appeared in all the reads assigned to that node, which should be barely larger than 1 unless you have very high coverage for real taxa, (2) ND+1 and ND-1, normalized damage, which should be positive for ancient taxa (their unnormalized versions are later in Damaged+1 and Damaged-1). Hopefully the others speak for themselves or are outlined below.
+
+For help, type
+
+```sh
+bamdam --help
+bamdam shrink --help
+bamdam compute --help
+```
+
+Bamdam extract also exists but you probably won't need it right now. Bamdam plot is not finished and will not work just yet.
+
+Big readme update coming soon :)
+
+
 ## Table of Contents
 - [Description](#description)
 - [Installation](#installation)
