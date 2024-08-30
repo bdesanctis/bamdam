@@ -14,29 +14,33 @@ import hyperloglog
 import subprocess
 
 def get_sorting_order(file_path):
-    # a bam is almost a gzipped sam; take advantage of this so we don't have to read in the full header (pysam can't stream it)
+    # this is the fastest way to check if HD is the first line of the header
+    # a bam is basically a gzipped sam; take advantage of this so we don't have to read in the full header just for this check (pysam can't stream it)
     command = f"gunzip -dc {file_path}"
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
-
-    # read the output in binary and manually decode it as needed
-    while True:
-        line = process.stdout.readline()
-        hd_index = line.find(b'@HD')
-        if hd_index != -1:
-            line = line[hd_index:]
-            line = line.decode('ascii')
-            fields = line.strip().split("\t")
-            for field in fields:
-                if field.startswith("SO:"):
-                    sorting_order = field.split(":")[1]
-                    process.stdout.close()
-                    process.terminate()
-                    return sorting_order
-            break  # no need to continue if we've passed the @HD line
-
+    # read the output in binary and manually decode it 
+    line = process.stdout.readline()
+    hd_index = line.find(b'@HD')
+    if hd_index != -1:
+        line = line[hd_index:]
+        line = line.decode('ascii')
+        fields = line.strip().split("\t")
+        for field in fields:
+            if field.startswith("SO:"):
+                sorting_order = field.split(":")[1]
+                process.stdout.close()
+                process.terminate()
+                return sorting_order
     process.stdout.close()
     process.terminate()
-    return "unknown"
+    # here is a slower version, try this if HD line is not at the top
+    try:
+        with pysam.AlignmentFile(file_path, "rb") as bamfile:
+            hdline = bamfile.header.get('HD', {})
+            sorting_order = hdline.get('SO', 'unknown')
+            return sorting_order
+    except:
+        return "unknown"
 
 def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_keywords, exclude_under):
 
@@ -86,12 +90,11 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
             for _ in range(lcaheaderlines):
                 next(infile) # assumes it has the usual 2 comment lines at the top from ngslca
             for line in infile:
-                entry = line.strip().split('\t')
-                readnamesplit = entry[0].split(':')[0:7]
-                newreadname = ":".join(readnamesplit)
+                tab_split = line.find('\t')
+                newreadname = line[:tab_split].rsplit(':', 3)[0]
                 if newreadname == oldreadname:
                     print("Error: You have duplicate entries in your LCA file, for example " + newreadname + ". That's a problem. You should fix this (e.g. using uniq) and re-run BamDam.")
-                    exit -1
+                    exit(-1)
                 if upto in line:
                     # you can just go straight to the upto level and check if that node has high enough count 
                     if exclude_under and any(keyword in line for keyword in exclude_keywords):
@@ -99,6 +102,7 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
                     elif (not exclude_under) and any(keyword in entry[1] for keyword in exclude_keywords):
                         continue # don't keep the ones that have the keywords in their assignment if exclude_under is false
                     else:
+                        entry = line.strip().split('\t')
                         for field in entry[1:]:
                             if f":{upto}" in field:
                                 number = field.split(':')[0]
@@ -111,11 +115,11 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
 def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded,minsimilarity): 
     # runs through the existing bam and the new short lca file at once, and writes only lines to the new bam which are represented in the short lca file
     # does two passes, the first of which makes a shortened header as well and adds the command str to the end of the bam header
-    # also annotates with (correct!) pmd scores as it goes
+    # also annotates with (correct!) pmd scores as it goes - the original pmdtools has a bug for single stranded libraries
 
     # now takes in minsimilarity as a percentage, and will keep reads w/ equal to or greater than NM flag to this percentage 
 
-    print("Writing a filtered BAM file annotated with PMD scores...")
+    print(f"Writing a filtered bam file...")
 
     # go and get get header lines in the OUTPUT lca, not the input (it will be 0, but just in case I modify code in the future)
     lcaheaderlines = 0
@@ -124,105 +128,7 @@ def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded
             if "root" in lcaline:
                 break
             lcaheaderlines += 1
-    command_str =  ' '.join(sys.argv) 
 
-    # Pass one: get the shortened header
-    # (Go through the short_lca_path and the original BAM header and the original BAM at the same time, batching in a list and putting in a dictionary)
-
-    relevant_references = {}
-    batch_references = []
-
-    with pysam.AlignmentFile(original_bam_path, "rb", check_sq=False, require_index=False) as infile, \
-         open(short_lca_path, 'r') as shortlcafile:
-        
-        for _ in range(lcaheaderlines):
-            lcaline = next(shortlcafile)
-
-        lcaline = next(shortlcafile)
-        lcareadname = ":".join(lcaline.strip().split('\t')[0].split(':')[0:7])
-
-        notdone = True
-        try:
-            bamread = next(infile)
-        except StopIteration:
-            notdone = False
-
-        while notdone:
-            if bamread.query_name == lcareadname:
-                while bamread.query_name == lcareadname:  # go through all the alignments for this read
-                    similarity = 1 - bamread.get_tag('NM') / bamread.query_length
-                    if similarity >= minsimilarity:
-                        ref_name = infile.get_reference_name(bamread.reference_id)
-                        batch_references.append(ref_name)  # Accumulate in the batch
-                    try:
-                        bamread = next(infile)
-                    except StopIteration:
-                        notdone = False
-                        break
-                try:
-                    lcaline = next(shortlcafile)
-                    lcareadname = ":".join(lcaline.strip().split('\t')[0].split(':')[0:7])
-                except StopIteration:
-                    notdone = False  # done with the LCA file
-                
-                # process the batch and update the relevant_references dictionary
-                for ref_name in set(batch_references):  # remove duplicates
-                    relevant_references[ref_name] = True
-                batch_references.clear()  #cClear the batch list for the next read
-            else:
-                try:
-                    bamread = next(infile)
-                except StopIteration:
-                    notdone = False  # Done with the BAM file
-
-        # filter the header to only include relevant references
-        command = f"gunzip -dc {original_bam_path}"
-        bam_process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
-
-        header_dict = {'HD': {}, 'SQ': [], 'PG': []}
-
-        #read through the header line by line to produce a filtered header while hopefully consuming less RAM
-        while True:
-            bam_line = bam_process.stdout.readline()
-            if not bam_line:
-                break
-            try:
-                line = bam_line.decode('ascii').strip()
-            except UnicodeDecodeError:
-                hd_index = bam_line.find(b'@HD')
-                if hd_index != -1:
-                    bam_line = bam_line[hd_index:]
-                    line = bam_line.decode('ascii').strip()
-            fields = line.split("\t") 
-            for field in fields:
-                if not field.startswith('@'):
-                    break
-                if field.startswith('@HD'):
-                    header_dict['HD'] = dict(field.split(':') for field in line.split('\t')[1:])
-                if field.startswith('@SQ'):
-                    sq_dict = dict(f.split(':') for f in line.split('\t')[1:])
-                    if sq_dict['SN'] in relevant_references:
-                        header_dict['SQ'].append(sq_dict)    
-                if field.startswith('@PQ'):
-                    header_dict['PG'].append(dict(f.split(':') for f in line.split('\t')[1:]))
-
-        # add the 'bamdam'  entry to the header's PG section
-        header_dict['PG'].append({'ID': 'bamdam', 'PN': 'bamdam', 'CL': command_str})
-
-        bam_process.stdout.close()
-        bam_process.terminate()
-
-        filtered_header = {
-            'HD': header_dict['HD'],
-            'SQ': header_dict['SQ'],
-            'PG': header_dict['PG']
-        }
-
-        # create the mapping from old reference IDs to new reference IDs
-        name_to_old_id = {sq['SN']: i for i, sq in enumerate(header_dict['SQ'])}
-        old_to_new_ref_id_map = {name_to_old_id[sq['SN']]: new_id for new_id, sq in enumerate(filtered_header['SQ'])}
-
-    # pass two: write the reads, starting with the filtered header 
     with pysam.AlignmentFile(original_bam_path, "rb", check_sq=False, require_index=False) as infile, \
          pysam.AlignmentFile(short_bam_path, "wb", header=infile.header) as outfile, \
          open(short_lca_path, 'r') as shortlcafile:
@@ -233,7 +139,9 @@ def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded
 
         # Read the first LCA line and extract the read name
         lcaline = next(shortlcafile)
-        lcareadname = ":".join(lcaline.strip().split('\t')[0].split(':')[0:7])
+        tab_split = lcaline.find('\t')
+        colon_split = lcaline[:tab_split].rsplit(':', 3)[0]
+        lcareadname = colon_split
     
         currentlymatching = False
         notdone = True
@@ -245,17 +153,11 @@ def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded
 
         while notdone:
             if bamread.query_name == lcareadname:
-                # Copy this line and all the rest until you hit a nonmatching LCA line
+                # copy this line and all the rest until you hit a nonmatching LCA line
                 similarity = 1 - bamread.get_tag('NM') / bamread.query_length
                 if similarity >= minsimilarity:
-                    # Remap the reference ID
-                    if bamread.reference_id in old_to_new_ref_id_map:
-                        bamread.reference_id = old_to_new_ref_id_map[bamread.reference_id]
-                    # Remap the next_reference_id for paired-end reads
-                    if bamread.next_reference_id in old_to_new_ref_id_map:
-                        bamread.next_reference_id = old_to_new_ref_id_map[bamread.next_reference_id]
                     pmd = get_pmd(bamread, stranded)
-                    bamread.tags += [('DS','%.3f' % pmd)]
+                    bamread.set_tag('DS','%.3f' % pmd) 
                     outfile.write(bamread) # write the read!
                 currentlymatching = True
                 while currentlymatching:
@@ -264,13 +166,8 @@ def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded
                         if bamread.query_name == lcareadname:
                             similarity = 1 - bamread.get_tag('NM') / bamread.query_length
                             if similarity >= minsimilarity:
-                                if bamread.reference_id in old_to_new_ref_id_map:
-                                    bamread.reference_id = old_to_new_ref_id_map[bamread.reference_id]
-                                # Remap the next_reference_id for paired-end reads
-                                if bamread.next_reference_id in old_to_new_ref_id_map:
-                                    bamread.next_reference_id = old_to_new_ref_id_map[bamread.next_reference_id]
                                 pmd = get_pmd(bamread, stranded)
-                                bamread.tags += [('DS','%.3f' % pmd)]
+                                bamread.set_tag('DS','%.3f' % pmd) # replace a tag if it's already there
                                 outfile.write(bamread) # write the read! 
                         else:
                             currentlymatching = False
@@ -279,7 +176,8 @@ def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded
                         break
                 try:
                     lcaline = next(shortlcafile)
-                    lcareadname = ":".join(lcaline.strip().split('\t')[0].split(':')[0:7])
+                    tab_split = lcaline.find('\t')
+                    lcareadname = lcaline[:tab_split].rsplit(':', 3)[0]
                 except StopIteration:
                     notdone = False
             else:
@@ -288,19 +186,14 @@ def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded
                 except StopIteration:
                     notdone = False
 
-    # pbar_bam.close()
-    print("Wrote a filtered bam file. \n")
+    print("Wrote a filtered bam file. Done! \n") 
 
 def get_mismatches(seq, cigar, md):  
-    # parses a read, cigar and md string to determine nucleotide mismatches and positions. 
-
+    # parses a read, cigar and md string to determine mismatches and positions. 
     # does not output info on insertions/deletions but accounts for them.
     # thanks jonas oppenheimer who wrote half of this function :)
 
     # goes in two passes: once w/ cigar and once w/ md 
-    '''
-    reconstructs a nucleotide mismatch + position table given the query, cigar and md strings
-    '''
 
     cig = re.findall(r'\d+\D', cigar)
     md_pattern = re.compile(r'\d+|\^[A-Za-z]+|[A-Za-z]')
@@ -319,7 +212,7 @@ def get_mismatches(seq, cigar, md):
 
         if cat == 'S': # soft clip
             read_seq += seq[read_pos:read_pos + bases] # include the bases in the reconstructed read 
-            # you should probably edit this, we won't want to include soft clipped bases, i don't think 
+            # this includes soft clipped by default - edit this if you don't want to do this 
             continue
 
         elif cat in ['M', '=', 'X']: # match
@@ -345,7 +238,7 @@ def get_mismatches(seq, cigar, md):
     read_pos = 0
     mismatch_list = [] # of format [ref, read, pos in alignment]
     for x in md_list:
-        if x.startswith('^'): # remember this can be arbitrarily long (a ^ and then characters)
+        if x.startswith('^'): # this can be arbitrarily long (a ^ and then characters)
             num_chars_after_hat = len(x) -1 
             for i in range(0,num_chars_after_hat):
                 currchar = x[i+1]
@@ -378,9 +271,7 @@ def get_mismatches(seq, cigar, md):
     return [mismatch_list, ref_seq, read_seq]
 
 def mismatch_table(read,cigar,md,flagsum,phred):
-    # wrapper for get_mismatches that also reverse complements if needed, and mirrors around the middle of the read 
-    # so you shouldn't have to keep the length
-
+    # wrapper for get_mismatches that also reverse complements if needed, and mirrors around the middle of the read  so you shouldn't have to keep the length
     # also, a convenient place to calculate a pmd score without rewriting large pieces of code
 
     # "read" here is seq, a character vector
@@ -391,10 +282,10 @@ def mismatch_table(read,cigar,md,flagsum,phred):
     mms, refseq, readseq = get_mismatches(read,cigar,md)
 
     # some processing: first, figure out if it's forward or backwards
-    # second field of a bam is the 0, 16, ... it's called a flag sum and it parses like this (see bowtie2 manual)
+    # second field of a bam is called a flagsum and it parses like this (see eg bowtie2 manual)
     bin_flagsum = bin(flagsum)[::-1]
     bit_position = 4 #  2^4 = 16 this flag means it's aligned in reverse
-    backwards = len(bin_flagsum) > bit_position and bin_flagsum[bit_position] == '1' # backwards is a boolean 
+    backwards = len(bin_flagsum) > bit_position and bin_flagsum[bit_position] == '1' 
     if backwards: # flip all the positions and reverse complement all the nucleotides. the read in the bam is reverse-complemented if aligned to the reverse strand. 
         complement = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C'}
         mmsc = []
@@ -464,7 +355,6 @@ def get_pmd(read, stranded):
         refseqlist = rev_complement(refseqlist)
         readseqlist = rev_complement(readseqlist)
         phred = phred[::-1]
-    actual_read_pos = 0 # position in the read / position in the ref (they are aligned now)
     pmd_lik = 1
     null_lik = 1
     pos = 0 # need a separate tracker to cope with indels. if there's a "-" in the read reconstruction because of an insertion in the ref, it should not count as a "position" in the read
@@ -598,7 +488,6 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kr, kn, upto,stranded):
             lcaheaderlines += 1
     
     # initialize 
-
     node_data = {}
     bamfile = pysam.AlignmentFile(bamfile_path, "rb") 
     lcafile = open(lcafile_path, 'r')
@@ -613,7 +502,7 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kr, kn, upto,stranded):
     ctm1 = 0
     gam1 = 0
     div = 0
-    stop = False # for debugging
+    stop = False 
 
     for _ in range(lcaheaderlines +1):
         currentlcaline = next(lcafile) 
@@ -628,7 +517,6 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kr, kn, upto,stranded):
 
             # go get the k-mer table now
             kmer_table = generate_kmer_table(seq,kr)
-            #kmer_indices = map_kmers_to_index(kmer_table,kmer_index) # i think we don't need this 
 
             # get the lca entry and nodes we wanna update
             lcaentry = currentlcaline.split('\t')
@@ -639,10 +527,12 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kr, kn, upto,stranded):
                     nodestodumpinto.append(fields[i].split(':')[0])
                     break
                 nodestodumpinto.append(fields[i].split(':')[0])
-            lcareadnamesplit = lcaentry[0].split(':')[0:7]
-            lcareadname = ":".join(lcareadnamesplit)
+                
+            colon_split = lcaentry[0].rsplit(':', 3)[0]
+            lcareadname = colon_split
+
             if oldreadname != lcareadname:
-                print("WARNING: There is a mismatch between your lca and bam files at read " + oldreadname + " in the bam and " + lcareadname + " in the lca. ")
+                print("Warning: There is a mismatch between your lca and bam files at read " + oldreadname + " in the bam and " + lcareadname + " in the lca. ")
                 print("This mismatch could have some bad downstream implications, and it would be best to find out what's causing it, fix it, and re-run. Perhaps you have some reads in one file but not in the other? \n")
                 break
 
@@ -662,11 +552,10 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kr, kn, upto,stranded):
                 node_data[node]['total_alignments'] += num_alignments
                 node_data[node]['pmdsover2'] += pmdsover2 / num_alignments
                 node_data[node]['pmdsover4'] += pmdsover4 / num_alignments
-                # only consider a transition snp "damage" if it's in every alignment of a read! 
                 ctp1 = currentsubdict.get("['C', 'T', 1]", 0) # c -> t on the pos 1 
                 ctm1 = currentsubdict.get("['C', 'T', -1]", 0) # c -> t on the pos 1 
                 gam1 = currentsubdict.get("['G', 'A', -1]", 0) # c -> t on the pos 1 
-                # ok, so on josh kapp's suggestion, i used to only add to dp1 and dm1 if all the alignments for that read had a c>t, which does make sense.
+                # ok, so on joshua kapp's suggestion, i used to only add to dp1 and dm1 if all the alignments for that read had a c>t, which does make sense.
                 # but then it doesn't match the damage plots and that bugs me to no end, so i went back to adding the proportion of reads which had a c>t.
                 # an if ctp1 == num_alignments:  will do it josh's way 
                 node_data[node]['dp1'] = ((node_data[node]['dp1'] * node_data[node]['total_reads']) + (ctp1/num_alignments) ) / (node_data[node]['total_reads'] + 1)
@@ -675,7 +564,7 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kr, kn, upto,stranded):
                 if stranded == "ds":
                     node_data[node]['dm1'] = ((node_data[node]['dm1'] * node_data[node]['total_reads']) + (gam1/num_alignments) ) / (node_data[node]['total_reads'] + 1)
 
-                # updates kmer hll without using any outside kmer functions
+                # updates kmer hyperloglog without using any outside kmer functions
                 if len(seq) > kn:
                     for i in range(len(seq) - kn + 1):
                         kmer = seq[i:i + kn]
@@ -769,7 +658,7 @@ def format_subs(subs, nreads, stranded):
     other_subs = {}
     
     for key, value in subs.items():
-        # Extract position and check if it is within the range -15 to 15
+        # extract position and check if it is within the range -15 to 15 (more is unnecessary for damage)
         parts = key.strip("[]").replace("'", "").split(", ")
         pos = int(parts[2])
         if -15 <= pos <= 15:
@@ -786,18 +675,14 @@ def format_subs(subs, nreads, stranded):
                     other_subs[pos] = 0.0
                 other_subs[pos] += formatted_value
     
-    # Add the summarized 'O' substitutions to the list
+    # format
     for pos, value in other_subs.items():
         formatted_subs.append((pos, f"O{pos}:{round(value, 3)}"))
-    
-    # Sort the formatted_subs based on the specified order
-    formatted_subs.sort(key=lambda x: (x[0] > 0, (x[0])))
-    
-    # Return the formatted substitutions as a string
-    return " ".join(sub[1] for sub in formatted_subs)
+        formatted_subs.sort(key=lambda x: (x[0] > 0, (x[0])))
+        return " ".join(sub[1] for sub in formatted_subs)
 
 def parse_and_write_node_data(nodedata, stats_path, subs_path, stranded):
-    # parses a dictionary where keys are node tax ids, and entries are total_reads, meanlength, total_alignments, subs and kmers
+    # parses a dictionary where keys are node tax ids, and entries are total_reads, meanlength, total_alignments, etc
 
     statsfile = open(stats_path, 'w', newline='')
     subsfile = open(subs_path, 'w', newline='')
@@ -841,14 +726,11 @@ def parse_and_write_node_data(nodedata, stats_path, subs_path, stranded):
 
         subsrows[int(node)] = [int(node), taxname, fsubs]
     
-    # Sort rows by total reads
     rows.sort(key=lambda x: x[2], reverse=True)
 
-    # Write sorted rows to stats file
     for row in rows:
         writer.writerow(row)
     
-    # Write sorted subsrows based on the order of sorted rows 
     for row in rows:
         subswriter.writerow(subsrows[row[0]])
 
@@ -870,18 +752,18 @@ def extract_reads(in_lca, in_bam, out_bam, keyword):
          pysam.AlignmentFile(out_bam, "wb", header=infile.header) as outfile, \
          open(in_lca, 'r') as lcafile:
 
-        # Skip the LCA header lines
         for _ in range(lcaheaderlines):
             lcaline = next(lcafile)
 
-        # Read the first LCA line and extract the read name and check if it's got the keyword in it
+        # read the first LCA line and extract the read name and check if it's got the keyword in it
         lcaline = next(lcafile)
         iskeywordinlca = keyword in lcaline
-        lcareadname = ":".join(lcaline.strip().split('\t')[0].split(':')[0:7])
+        tab_split = lcaline.find('\t')
+        colon_split = lcaline[:tab_split].rsplit(':', 3)[0]
+        lcareadname = colon_split
         currentlymatching = False
         notdone = True
 
-        # Get the first bam read
         try:
             bamread = next(infile)
         except StopIteration:
@@ -892,7 +774,9 @@ def extract_reads(in_lca, in_bam, out_bam, keyword):
         while notdone:
             if iskeywordinlca:
                 # iterate the bam file until you find a match
-                lcareadname = ":".join(lcaline.strip().split('\t')[0].split(':')[0:7])
+                tab_split = lcaline.find('\t')
+                colon_split = lcaline[:tab_split].rsplit(':', 3)[0]
+                lcareadname = colon_split
                 currentlymatching = bamread.query_name == lcareadname
                 while not currentlymatching: # iterate until you hit the first instance of the read in the bam file
                     bamread = next(infile)
@@ -925,11 +809,10 @@ def extract_reads(in_lca, in_bam, out_bam, keyword):
                         notdone = False
                         break # done the lca file 
 
-def plotter(in_bam, subs, tax, stranded, plotfile, r_script_path):
 
-    if not os.path.exists(r_script_path):
-        sys.stderr.write(f"Error: The R script '{r_script_path}' does not exist.\n")
-        sys.exit(1)
+
+
+def plotter(in_bam, subs, tax, stranded, plotfile):
 
     ds_tags = {}
     nm_tags = {}
@@ -955,25 +838,11 @@ def plotter(in_bam, subs, tax, stranded, plotfile, r_script_path):
             else:
                 read_lengths[read_length] = 1
 
-        ds_stream = "\n".join(f"{ds}\t{count}" for ds, count in ds_tags.items())
-        nm_stream = "\n".join(f"{nm}\t{count}" for nm, count in nm_tags.items())
-        rl_stream = "\n".join(f"{length}\t{count}" for length, count in read_lengths.items())
-
         print(ds_tags)
         print(nm_tags)
         print(read_lengths)
 
-        combined_stream = f"{ds_stream}\nEND_DS\n{nm_stream}\nEND_NM\n{rl_stream}\nEND_RL\n"
-    command = [
-        "Rscript", r_script_path,
-        "-f", subs,
-        "-t", tax,
-        "-s", stranded,
-        "-o", plotfile,
-    ]
-    process = subprocess.Popen(command, stdin=subprocess.PIPE, text=True)
-    process.communicate(combined_stream)
-
+    # to do : plot it here in python, dude :) and pull the damage out of the subs file 
 
 def shrink(args):
     write_shortened_lca(args.in_lca, args.out_lca, args.upto, args.mincount, args.exclude_keywords, args.exclude_under)
@@ -997,9 +866,6 @@ def main():
     
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    script_dir = os.path.dirname(os.path.realpath(sys.argv[0]))
-    default_r_script_path = os.path.join(script_dir, "plotter.R")
-    
     # Shrink
     parser_shrink = subparsers.add_parser('shrink', help="Filter the BAM and LCA files.")
     parser_shrink.add_argument("--in_lca", type=str, required=True, help="Path to the original (sorted) LCA file (required)")
@@ -1008,11 +874,11 @@ def main():
     parser_shrink.add_argument("--out_bam", type=str, required=True, help="Path to the short output BAM file (required)")
     parser_shrink.add_argument("--stranded", type=str, required=True, help="Either ss for single stranded or ds for double stranded (required)")
     parser_shrink.add_argument("--mincount", type=int, default=5, help="Minimum read count to keep a node (default: 5)")
-    parser_shrink.add_argument("--upto", type=str, default="family", help="Keep nodes up to and including this tax threshold, use root to disable (default: family)")
+    parser_shrink.add_argument("--upto", type=str, default="family", help="Keep nodes up to and including this tax threshold; use root to disable (default: family)")
     parser_shrink.add_argument("--minsim", type=float, default=0.9, help="Minimum similarity to reference to keep an alignment (default: 0.9)")
     parser_shrink.add_argument("--exclude_keywords", type=str, nargs='+', default=[], help="Keyword(s) to exclude when filtering (default: none)")
     parser_shrink.add_argument("--exclude_keyword_file", type=str, default=None, help="File of keywords to exclude when filtering, one per line (default: none)")
-    parser_shrink.add_argument("--exclude_under", action='store_true', help="Set this flag if you also want to exclude all nodes underneath the ones you've specified (default: not set)")
+    parser_shrink.add_argument("--exclude_under", action='store_true', help="Include this flag if you also want to exclude all nodes underneath the ones you've specified (default: not set)")
     parser_shrink.set_defaults(func=shrink)
 
     # Compute
@@ -1042,8 +908,7 @@ def main():
     parser_plot.add_argument("--in_subs", type=str, required=True, help="Path to the subs file produced by bamdam compute (required)")
     parser_plot.add_argument("--tax", type=str, required=True, help="Taxonomic node ID (required)")
     parser_plot.add_argument("--stranded", type=str, required=True, help="Either ss for single stranded or ds for double stranded (required)")
-    parser_plot.add_argument("--outplot", type=str, default="bamdam_plot.png", help="Filename for the output plot, ending in .png or .pdf")
-    parser_plot.add_argument("--r_script_path", type=str, default=default_r_script_path, help="Path to the R script (default: ./plotter.R)")
+    parser_plot.add_argument("--outplot", type=str, default="bamdam_plot.png", help="Filename for the output plot, ending in .png or .pdf (default: bamdam_plot.png)")
     parser_plot.set_defaults(func=plot)
 
     args = parser.parse_args()
@@ -1070,14 +935,15 @@ def main():
     if hasattr(args, 'in_bam') and not os.path.exists(args.in_bam):
         parser.error(f"Input BAM path does not exist: {args.in_bam}")
     if hasattr(args, 'upto') and args.upto=="clade":
-        parser.error(f"Sorry, clade is not a valid taxonomic level in bamdam because there can be multiple clades in one taxonomic path.")
+        parser.error(f"Clade is not a valid taxonomic level in bamdam because there can be multiple clades in one taxonomic path.")
     if hasattr(args, 'upto') and args.upto != args.upto.lower():
         parser.warning(f"Warning: {args.upto} as provided is not in lowercase. Converting to lowercase and moving on.")
         args.upto = args.upto.lower()
         
     sortorder = get_sorting_order(args.in_bam)
     if sortorder != "queryname":
-        print("Error: Your bam file does not appear to be read-sorted. Please try again with it once it has been read-sorted (samtools sort -n), which should be the same order as your lca file.")
+        print("Error: Your bam file does not appear to be read-sorted. Please try again with it once it has been read-sorted (samtools sort -n), which should be the same order as your lca file. \n")
+        exit(-1) # remove this line to force continue
 
     # Deal with exclude keywords
     if hasattr(args, 'exclude_keywords') or hasattr(args, 'exclude_keyword_file'):
@@ -1094,7 +960,6 @@ def main():
                 parser.error(f"Exclude keyword file path does not exist: {args.exclude_keyword_file}")
             with open(args.exclude_keyword_file, 'r') as f: # remove quotation marks if they're in the file 
                 exclude_keywords.extend([line.strip().strip('"').strip("'") for line in f if line.strip()])
-
     
     if args.command == 'shrink':
         print("Hello! You are running bamdam shrink with the following arguments:")
