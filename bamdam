@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 # bamdam by Bianca De Sanctis, bddesanctis@gmail.com 
-# https://github.com/bdesanctis/bamdam/tree/main
 
 import sys 
 import re
@@ -12,6 +11,16 @@ import argparse
 import os
 import hyperloglog
 import subprocess
+try: # optional library only needed for plotting 
+    import matplotlib.pyplot as plt
+    matplotlib_imported = True
+except:
+    matplotlib_imported = False
+try: # optional library for progress bars 
+    from tqdm import tqdm
+    tqdm_imported = True
+except ImportError:
+    tqdm_imported = False
 
 def get_sorting_order(file_path):
     # this is the fastest way to check if HD is the first line of the header
@@ -44,7 +53,7 @@ def get_sorting_order(file_path):
 
 def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_keywords, exclude_under):
 
-    print("\nWriting a filtered LCA file...")
+    print("\nWriting a filtered lca file...")
 
     lcaheaderlines = 0
     with open(original_lca_path, 'r') as lcafile:
@@ -52,6 +61,7 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
             if "root" in lcaline:
                 break
             lcaheaderlines += 1
+    total_short_lca_lines = 0
 
     # pass 1: make a dictionary with all the tax ids and their counts 
     number_counts = {}
@@ -93,7 +103,7 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
                 tab_split = line.find('\t')
                 newreadname = line[:tab_split].rsplit(':', 3)[0]
                 if newreadname == oldreadname:
-                    print("Error: You have duplicate entries in your LCA file, for example " + newreadname + ". That's a problem. You should fix this (e.g. using uniq) and re-run BamDam.")
+                    print("Error: You have duplicate entries in your LCA file, for example " + newreadname + ". You should fix this and re-run BamDam. Here is a suggested fix: awk '!seen[$0]++' input_lca > output_lca")
                     exit(-1)
                 if upto in line:
                     # you can just go straight to the upto level and check if that node has high enough count 
@@ -108,18 +118,25 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
                                 number = field.split(':')[0]
                                 if number in goodnodes:
                                     outfile.write(line)
+                                    total_short_lca_lines += 1
                                     break
 
     print("Wrote a filtered lca file. \n")
 
-def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded,minsimilarity): 
+    return total_short_lca_lines
+
+
+def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded,minsimilarity,annotate_pmd,totallcalines): 
     # runs through the existing bam and the new short lca file at once, and writes only lines to the new bam which are represented in the short lca file
     # does two passes, the first of which makes a shortened header as well and adds the command str to the end of the bam header
     # also annotates with (correct!) pmd scores as it goes - the original pmdtools has a bug for single stranded libraries
 
     # now takes in minsimilarity as a percentage, and will keep reads w/ equal to or greater than NM flag to this percentage 
 
-    print(f"Writing a filtered bam file...")
+    if tqdm_imported:
+        print(f"Writing a filtered bam file (a progress bar will initiate once the bam header has been written)...")
+    else:
+        print(f"Writing a filtered bam file...")
 
     # go and get get header lines in the OUTPUT lca, not the input (it will be 0, but just in case I modify code in the future)
     lcaheaderlines = 0
@@ -128,16 +145,15 @@ def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded
             if "root" in lcaline:
                 break
             lcaheaderlines += 1
+    currentlcaline = lcaheaderlines
 
     with pysam.AlignmentFile(original_bam_path, "rb", check_sq=False, require_index=False) as infile, \
          pysam.AlignmentFile(short_bam_path, "wb", header=infile.header) as outfile, \
          open(short_lca_path, 'r') as shortlcafile:
 
-        # Skip the LCA header lines
         for _ in range(lcaheaderlines): 
             lcaline = next(shortlcafile)
 
-        # Read the first LCA line and extract the read name
         lcaline = next(shortlcafile)
         tab_split = lcaline.find('\t')
         colon_split = lcaline[:tab_split].rsplit(':', 3)[0]
@@ -151,23 +167,30 @@ def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded
         except StopIteration:
             notdone = False
 
+        progress_bar = tqdm(total=totallcalines-lcaheaderlines, unit='lines', disable=not tqdm_imported) if tqdm_imported else None
+        if progress_bar:
+            update_interval = 100 # this is arbitrary. could also be e.g. (totallcalines // 1000)
+
         while notdone:
             if bamread.query_name == lcareadname:
                 # copy this line and all the rest until you hit a nonmatching LCA line
-                similarity = 1 - bamread.get_tag('NM') / bamread.query_length
+                readlength = bamread.query_length # same read length for all the alignments
+                similarity = 1 - bamread.get_tag('NM') / readlength # not the same NM for all the alignments
                 if similarity >= minsimilarity:
-                    pmd = get_pmd(bamread, stranded)
-                    bamread.set_tag('DS','%.3f' % pmd) 
+                    if annotate_pmd:
+                        pmd = get_pmd(bamread, stranded)
+                        bamread.set_tag('DS','%.3f' % pmd)  
                     outfile.write(bamread) # write the read!
                 currentlymatching = True
                 while currentlymatching:
                     try:
                         bamread = next(infile)
                         if bamread.query_name == lcareadname:
-                            similarity = 1 - bamread.get_tag('NM') / bamread.query_length
+                            similarity = 1 - bamread.get_tag('NM') / readlength
                             if similarity >= minsimilarity:
-                                pmd = get_pmd(bamread, stranded)
-                                bamread.set_tag('DS','%.3f' % pmd) # replace a tag if it's already there
+                                if annotate_pmd:
+                                    pmd = get_pmd(bamread, stranded)
+                                    bamread.set_tag('DS','%.3f' % pmd) # replace a tag if it's already there
                                 outfile.write(bamread) # write the read! 
                         else:
                             currentlymatching = False
@@ -178,6 +201,9 @@ def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded
                     lcaline = next(shortlcafile)
                     tab_split = lcaline.find('\t')
                     lcareadname = lcaline[:tab_split].rsplit(':', 3)[0]
+                    currentlcaline +=1 
+                    if progress_bar and currentlcaline % update_interval == 0 :
+                        progress_bar.update(update_interval) 
                 except StopIteration:
                     notdone = False
             else:
@@ -185,6 +211,8 @@ def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded
                     bamread = next(infile)
                 except StopIteration:
                     notdone = False
+    if progress_bar:
+        progress_bar.close()
 
     print("Wrote a filtered bam file. Done! \n") 
 
@@ -196,8 +224,7 @@ def get_mismatches(seq, cigar, md):
     # goes in two passes: once w/ cigar and once w/ md 
 
     cig = re.findall(r'\d+\D', cigar)
-    md_pattern = re.compile(r'\d+|\^[A-Za-z]+|[A-Za-z]')
-    md_list = md_pattern.findall(md)
+    md_list = re.compile(r'\d+|\^[A-Za-z]+|[A-Za-z]').findall(md)
 
     ref_seq = ''
     read_seq = ''
@@ -268,13 +295,10 @@ def get_mismatches(seq, cigar, md):
                 read_pos += 1
                 # if you're a letter, you're mismatching. the letter is given in the ref. you can find the letter in the read in the seq[ref_pos]. 
 
-    return [mismatch_list, ref_seq, read_seq]
+    return [mismatch_list, ref_seq, read_seq] 
 
-def mismatch_table(read,cigar,md,flagsum,phred):
-    # wrapper for get_mismatches that also reverse complements if needed, and mirrors around the middle of the read  so you shouldn't have to keep the length
-    # also, a convenient place to calculate a pmd score without rewriting large pieces of code
-
-    # "read" here is seq, a character vector
+def mismatch_table(read,cigar,md,flagsum):
+    # wrapper for get_mismatches that also reverse complements if needed, and mirrors around the middle of the read so you shouldn't have to keep the length
 
     readlength = len(read)
 
@@ -296,7 +320,6 @@ def mismatch_table(read,cigar,md,flagsum,phred):
                 readlength - mms[entry][2] +1
             ]
             mmsc.append(new_entry)
-        phred = phred[::-1]
     else:
         mmsc = mms
     # now everything, EXCEPT unmerged but retained reverse mate pairs of paired end reads (which i should still try to catch later; to do), should be 5' -> 3' 
@@ -418,67 +441,52 @@ def get_pmd(read, stranded):
 
     return pmd_score
 
-# bunch of handy kmer functions
-def generate_kmers_recursive(prefix, k, kmers):
-    if k == 0:
-        kmers.append(prefix)
-        return
-    for nucleotide in "ACGT":
-        generate_kmers_recursive(prefix + nucleotide, k - 1, kmers)
-def generate_kmers(k):
-    kmers = []
-    generate_kmers_recursive("", k, kmers)
-    return kmers
-def create_kmer_index(kmers):
-    kmer_index = {kmer: index for index, kmer in enumerate(kmers)}
-    return kmer_index
-def generate_kmer_table(read, k):
-    kmer_table = {}
-    if k == len(read):
-        kmer_table[read] = 1
-    if k > len(read):
-        print("Warning: Some of your reads are shorter than your specified k-mer length, which will lead to nonsensical behavior in the counting of unique k-mers. Consider reducing k and re-running.")
-        kmer_table[read] = 1
-    else: 
-        for i in range(len(read) - k + 1):
-            kmer = read[i:i + k]
-            if not all(base in {'A', 'C', 'T', 'G'} for base in kmer):                
-                continue # skip this k-mer, non ACTG characters are not allowed
-            if kmer in kmer_table:
-                kmer_table[kmer] += 1
-            else:
-                kmer_table[kmer] = 1
-    return kmer_table
-def map_kmers_to_index(kmer_table, kmer_index):
-    mapped_kmers = {kmer_index[kmer]: count for kmer, count in kmer_table.items() if kmer in kmer_index}
-    return mapped_kmers
+def line_count(file_path): # just a wc -l wrapper
+    result = subprocess.run(['wc', '-l', file_path], stdout=subprocess.PIPE, text=True)
+    line_count = int(result.stdout.split()[0])
+    return line_count
 
-def calculate_kmer_complexity(kmers, kr):
-    # this takes in a dict of kmer counts, keyed by their indices, and returns an entropy
-    num_possible_kmers = 4**kr
-    entropy = 0
-    for key in kmers:
-        entropy += - kmers[key] / num_possible_kmers * math.log(kmers[key] / num_possible_kmers)
-    
+def gini_index(seq, k):
+    kmer_counts = {}
+    for i in range(len(seq) - k + 1):
+        kmer = seq[i:i + k]
+        if not all(base in {'A', 'C', 'T', 'G'} for base in kmer):
+            print(f"Warning: Skipping k-mer calculations for a read with non-ACGT characters.")
+            continue 
+        if kmer in kmer_counts:
+            kmer_counts[kmer] += 1
+        else:
+            kmer_counts[kmer] = 1
+    counts = sorted(kmer_counts.values())
+    n = len(counts)
+    total_sum = sum(counts)
     pairwise_differences = 0
-    keys = list(kmers.keys())
-    sumkeys = 0
-    for i in range(len(keys)):
-        sumkeys += kmers[keys[i]]
-        for j in range(i + 1, len(keys)):
-            pairwise_differences += abs(kmers[keys[i]] - kmers[keys[j]])
-    gini = pairwise_differences / (2*len(kmers)*sumkeys)
-    
+    for i in range(n):
+        for j in range(i + 1, n):
+            pairwise_differences += abs(counts[i] - counts[j])
+    gini = pairwise_differences / (n * total_sum) 
     return gini
 
-def gather_subs_and_kmers(bamfile_path, lcafile_path, kr, kn, upto,stranded):
-    # takes in a list of node ids as determined from shorten_files, and outputs the damage distribution at each of these nodes. 
-    # Run through the bam/lca once and assign kmer complexity and damage to each node you care about. 
-    print("\n Gathering substitution and kmer metrics per node...")
+def get_hll_info(seq,k):
+    # output to dump into hll objects
+    rep_kmers = []
+    total_kmers = 0
+    if len(seq) > k:
+        for i in range(len(seq) - k + 1):
+            kmer = seq[i:i + k]
+            if not all(base in {'A', 'C', 'T', 'G'} for base in kmer):         
+                print(f"Warning: Skipping k-mer calculations for a read with non-ACGT characters.")       
+                continue # skip this k-mer, non ACTG characters are not allowed
+            else:
+                rep_kmers.append(get_rep_kmer(kmer))
+                total_kmers +=1 
+    else:
+        print(f"Warning: One of your reads is shorter than kn.")
+    return rep_kmers, total_kmers
 
-    # initialize kmer list so that indexing is fast and easy
-    #kmers = generate_kmers(k)
-    #kmer_index = create_kmer_index(kmers)
+
+def gather_subs_and_kmers(bamfile_path, lcafile_path, kr, kn, upto,stranded):
+    print("\n Gathering substitution and kmer metrics per node...")
 
     lcaheaderlines = 0
     with open(lcafile_path, 'r') as lcafile:
@@ -486,23 +494,34 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kr, kn, upto,stranded):
             if "root" in lcaline:
                 break
             lcaheaderlines += 1
-    
+
     # initialize 
     node_data = {}
     bamfile = pysam.AlignmentFile(bamfile_path, "rb") 
     lcafile = open(lcafile_path, 'r')
     oldreadname = ""
+    oldmd = ""
+    oldcigar = ""
+    oldflagsum = ""
     nodestodumpinto = []
     num_alignments = 0
     currentsubdict = {}
     nms = 0 
     pmdsover2 = 0
     pmdsover4 = 0
+    are_pmds_in_the_bam = True # just assume true, then set to false quickly below if you notice otherwise 
     ctp1 = 0
     ctm1 = 0
     gam1 = 0
     div = 0
-    stop = False 
+
+    currentlcalinenum = 0
+    if tqdm_imported:
+        totallcalines = line_count(lcafile_path)
+        # should be super fast compared to anything else; probably worth it to initiate a progress bar.
+        progress_bar = tqdm(total=totallcalines-lcaheaderlines, unit='lines', disable=not tqdm_imported) if tqdm_imported else None
+        if progress_bar:
+            update_interval = 100 # this is arbitrary ofc. could also be e.g. (totallcalines // 1000) 
 
     for _ in range(lcaheaderlines +1):
         currentlcaline = next(lcafile) 
@@ -512,11 +531,14 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kr, kn, upto,stranded):
         # get the basic info for this read
         readname = read.query_name
 
-        # immediately find out if it's a new read. if so, you JUST finished the last read, so do a bunch of stuff for it.
+        # immediately find out if it's a new read. if so, you JUST finished the last read, so do a bunch of stuff for it. 
         if readname != oldreadname and oldreadname != "":
 
-            # go get the k-mer table now
-            kmer_table = generate_kmer_table(seq,kr)
+            # do k-mer things for this read
+            # first get gini index for this read
+            gini = gini_index(seq,kr) 
+            # then get all the rep kmers to dump into the hyperloglog for each relevant node below
+            rep_kmers, total_kmers = get_hll_info(seq,kn)
 
             # get the lca entry and nodes we wanna update
             lcaentry = currentlcaline.split('\t')
@@ -524,6 +546,7 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kr, kn, upto,stranded):
             nodestodumpinto = []
             for i in range(len(fields)):
                 if upto in fields[i]:
+                    # gotta be the last one! 
                     nodestodumpinto.append(fields[i].split(':')[0])
                     break
                 nodestodumpinto.append(fields[i].split(':')[0])
@@ -540,18 +563,24 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kr, kn, upto,stranded):
             for node in nodestodumpinto:
                 if node not in node_data:
                     # that's ok! add it. 
-                    node_data[node] = {'total_reads': 0,'pmdsover2': 0, 'pmdsover4': 0, 'meanlength': 0, 'total_alignments': 0, 
+                    if are_pmds_in_the_bam:
+                        node_data[node] = {'total_reads': 0,'pmdsover2': 0, 'pmdsover4': 0, 'meanlength': 0, 'total_alignments': 0, 
+                                       'ani': 0, 'avgperreadgini' : 0, 'avggc': 0, 'tax_path' : "", 'subs': {},
+                                       'dp1' : 0, 'dm1' : 0, 'div': 0, 'hll': hyperloglog.HyperLogLog(0.01), 'totalkmers' : 0 }
+                    else:
+                        node_data[node] = {'total_reads': 0,'meanlength': 0, 'total_alignments': 0, 
                                        'ani': 0, 'avgperreadgini' : 0, 'avggc': 0, 'tax_path' : "", 'subs': {},
                                        'dp1' : 0, 'dm1' : 0, 'div': 0, 'hll': hyperloglog.HyperLogLog(0.01), 'totalkmers' : 0 }
                 node_data[node]['meanlength'] = ((node_data[node]['meanlength'] * node_data[node]['total_reads']) + readlength) / (node_data[node]['total_reads'] + 1)
-                node_data[node]['avgperreadgini'] = ( (node_data[node]['avgperreadgini'] * node_data[node]['total_reads']) + calculate_kmer_complexity(kmer_table,kr)) / (node_data[node]['total_reads'] + 1)
+                node_data[node]['avgperreadgini'] = ( (node_data[node]['avgperreadgini'] * node_data[node]['total_reads']) + gini) / (node_data[node]['total_reads'] + 1)
                 ani_for_this_read = (readlength - nms/num_alignments)/readlength 
                 node_data[node]['ani'] = (ani_for_this_read + node_data[node]['ani'] * node_data[node]['total_reads']) / (node_data[node]['total_reads'] + 1)
                 gc_content_for_this_read = (seq.count('C') + seq.count('G')) / readlength
                 node_data[node]['avggc'] = ((node_data[node]['avggc'] * node_data[node]['total_reads']) + gc_content_for_this_read) / (node_data[node]['total_reads'] + 1)
                 node_data[node]['total_alignments'] += num_alignments
-                node_data[node]['pmdsover2'] += pmdsover2 / num_alignments
-                node_data[node]['pmdsover4'] += pmdsover4 / num_alignments
+                if are_pmds_in_the_bam:
+                    node_data[node]['pmdsover2'] += pmdsover2 / num_alignments
+                    node_data[node]['pmdsover4'] += pmdsover4 / num_alignments
                 ctp1 = currentsubdict.get("['C', 'T', 1]", 0) # c -> t on the pos 1 
                 ctm1 = currentsubdict.get("['C', 'T', -1]", 0) # c -> t on the pos 1 
                 gam1 = currentsubdict.get("['G', 'A', -1]", 0) # c -> t on the pos 1 
@@ -564,17 +593,10 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kr, kn, upto,stranded):
                 if stranded == "ds":
                     node_data[node]['dm1'] = ((node_data[node]['dm1'] * node_data[node]['total_reads']) + (gam1/num_alignments) ) / (node_data[node]['total_reads'] + 1)
 
-                # updates kmer hyperloglog without using any outside kmer functions
-                if len(seq) > kn:
-                    for i in range(len(seq) - kn + 1):
-                        kmer = seq[i:i + kn]
-                        if not all(base in {'A', 'C', 'T', 'G'} for base in kmer):                
-                            continue # skip this k-mer, non ACTG characters are not allowed
-                        else:
-                            node_data[node]['hll'].add(get_rep_kmer(kmer)) 
-                            node_data[node]['totalkmers'] += 1 
-                else:
-                    print("Warning: One of your reads is shorter than kn. We will skip it for kmer computations and move on, but consider using a different kn if this message appears many times.")
+                # update hyperloglogs
+                for kmer in rep_kmers:
+                    node_data[node]['hll'].add(kmer)
+                node_data[node]['totalkmers'] += total_kmers
 
                 # updates substitution tables similarly
                 other_sub_count = 0
@@ -586,6 +608,7 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kr, kn, upto,stranded):
                             node_data[node]['subs'][sub] += count / num_alignments
                         else:
                             node_data[node]['subs'][sub] = count / num_alignments # so, this can be up to 1 per node. 
+                # last bits to update
                 div = other_sub_count / (num_alignments * readlength)
                 node_data[node]['div'] = ((node_data[node]['div'] * node_data[node]['total_reads']) + div ) / (node_data[node]['total_reads'] + 1)
                 # add the tax path if it's not already there
@@ -594,39 +617,52 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kr, kn, upto,stranded):
                     tax_path = ','.join(lcaentry[lca_index:]).replace('\n','')
                     node_data[node]['tax_path'] = tax_path
                 
-                # only now update total reads 
+                # only at the end should you update total reads 
                 node_data[node]['total_reads'] += 1
 
-            # move on. re initialize a bunch of things here 
+            # move on to the next lca entry. re initialize a bunch of things here 
             oldreadname = readname
+            oldmd = ""
+            oldcigar = ""
+            oldflagsum = ""
             currentlcaline = next(lcafile)
+            currentlcalinenum += 1 
+            if progress_bar and (currentlcalinenum % update_interval == 0) :
+                progress_bar.update(update_interval)  # Update the progress bar
             currentsubdict = {}
             num_alignments = 0
             nms = 0
-            pmdsover2 = 0
-            pmdsover4 = 0
+            if are_pmds_in_the_bam:
+                pmdsover2 = 0
+                pmdsover4 = 0
             ctp1 = 0
             ctm1 = 0
             gam1 = 0
             div = 0 
 
-        # now for the current read
+        # now for the current alignment.
+        # the following might change for different alignments of the same read: 
         seq = read.query_sequence
         readlength = len(seq)
         cigar = read.cigarstring
         md = read.get_tag('MD')
         nms += read.get_tag('NM')
-        pmd = float(read.get_tag('DS'))
-        if(pmd>2):
-            pmdsover2 += 1
-        if(pmd>4):
-            pmdsover4 += 1
-        phred = read.query_qualities
+        if are_pmds_in_the_bam: 
+            try:
+                pmd = float(read.get_tag('DS'))
+            except KeyError:
+                pmd = 0
+            if(pmd>2):
+                pmdsover2 += 1 
+            if(pmd>4):
+                pmdsover4 += 1
         flagsum = read.flag
         num_alignments += 1 
 
-        # get the mismatch table for this read, don't bother rerunning the internal pmd calculation though
-        subs = mismatch_table(seq,cigar,md,flagsum,phred) 
+        # go and get the mismatch table for this read if the name/md/cigar/flagsum is different to before (this is expensive, so avoid it when possible)
+        if (readname != oldreadname) or (cigar != oldcigar) or (md != oldmd) or (flagsum != oldflagsum):
+            subs = mismatch_table(seq,cigar,md,flagsum) 
+            oldcigar = cigar; oldmd = md; oldflagsum = flagsum
         for sub in subs:
             key = "".join(str(sub))
             if key in currentsubdict:
@@ -634,61 +670,53 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kr, kn, upto,stranded):
             else:
                 currentsubdict[key] = 1
 
-        for key in subs:
-            if key[2] == 0:
-                print("Something is wrong. Printing the problem read. Check your reads and MD tags. ")
-                print(f"Substitution: {key}, Read: {read.query_name}, md: {md}, cigar: {cigar}")
-
-        if stop:
-            break
-
-        # quick catch for the starting read
+        # quick catch for the starting read; check if the first read (and then presumably the whole bam) has a pmd score 
         if oldreadname == "":
             oldreadname = readname
+            try:
+                pmd = float(read.get_tag('DS'))
+            except KeyError:
+                are_pmds_in_the_bam = False
 
-    print("Gathered substitution and kmer data for " + str(len(node_data)) + " taxonomic nodes. Now processing to compute damage and k-mer complexity... ")
+    if progress_bar:
+        progress_bar.close()
+
+    print("\nGathered substitution and kmer data for " + str(len(node_data)) + " taxonomic nodes. Now sorting and writing output files... ")
 
     bamfile.close() 
     lcafile.close()
 
-    return node_data
+    return node_data, are_pmds_in_the_bam
 
-def format_subs(subs, nreads, stranded):
+def format_subs(subs, nreads):
     formatted_subs = []
-    other_subs = {}
     
     for key, value in subs.items():
         # extract position and check if it is within the range -15 to 15 (more is unnecessary for damage)
+        # easy to remove the condition if you want to write all of the subs though!
         parts = key.strip("[]").replace("'", "").split(", ")
         pos = int(parts[2])
-        if -15 <= pos <= 15:
-            substitution = parts[0] + parts[1]
+        if (-15 <= pos <= 15) and (parts[0] in {'A', 'C', 'T', 'G'}) and (parts[1] in {'A', 'C', 'T', 'G'}):
             formatted_key = "".join(parts)
-            formatted_value = round(value / nreads, 3)
-            
-            if substitution == 'CT': # keep any c>t
-                formatted_subs.append((pos, f"{formatted_key}:{formatted_value}"))
-            elif substitution == 'GA' and stranded == "ds": # keep g>a only if you are double stranded
-                formatted_subs.append((pos, f"{formatted_key}:{formatted_value}"))
-            else:
-                if pos not in other_subs:
-                    other_subs[pos] = 0.0
-                other_subs[pos] += formatted_value
-    
-    # format
-    for pos, value in other_subs.items():
-        formatted_subs.append((pos, f"O{pos}:{round(value, 3)}"))
-        formatted_subs.sort(key=lambda x: (x[0] > 0, (x[0])))
-        return " ".join(sub[1] for sub in formatted_subs)
+            formatted_value = round(value / nreads, 3)  
+            formatted_subs.append((pos, f"{formatted_key}:{formatted_value}"))
+            formatted_subs.sort(key=lambda x: (x[0] > 0, (x[0])))
 
-def parse_and_write_node_data(nodedata, stats_path, subs_path, stranded):
+    return " ".join(sub[1] for sub in formatted_subs)
+
+
+def parse_and_write_node_data(nodedata, stats_path, subs_path, stranded, pmds_in_bam):
     # parses a dictionary where keys are node tax ids, and entries are total_reads, meanlength, total_alignments, etc
 
     statsfile = open(stats_path, 'w', newline='')
     subsfile = open(subs_path, 'w', newline='')
-    header = ['TaxNodeID', 'TaxName', 'TotalReads', 'ND+1', 'ND-1', 'UniqueKmers', 'Duplicity', 
+    if pmds_in_bam:
+        header = ['TaxNodeID', 'TaxName', 'TotalReads', 'ND+1', 'ND-1', 'UniqueKmers', 'Duplicity', 
               'MeanLength', 'Div', 'ANI','PerReadKmerGI', 'AvgGC', 'Damage+1', 'Damage-1','TotalAlignments', 
                 'PMDsover2', 'PMDSover4','taxpath'] 
+    else:
+            header = ['TaxNodeID', 'TaxName', 'TotalReads', 'ND+1', 'ND-1', 'UniqueKmers', 'Duplicity', 
+              'MeanLength', 'Div', 'ANI','PerReadKmerGI', 'AvgGC', 'Damage+1', 'Damage-1','TotalAlignments','taxpath'] 
     statsfile.write('\t'.join(header) + '\n')
     writer = csv.writer(statsfile, delimiter='\t', quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
     subswriter = csv.writer(subsfile, delimiter='\t', quotechar='"', quoting=csv.QUOTE_NONE)
@@ -700,7 +728,7 @@ def parse_and_write_node_data(nodedata, stats_path, subs_path, stranded):
         tn = nodedata[node]
         
         # get formatted subs
-        fsubs = format_subs(tn['subs'], tn['total_reads'], stranded)
+        fsubs = format_subs(tn['subs'], tn['total_reads'])
 
         # number of unique k-mers approximated by the hyperloglog algorithm
         numuniquekmers = len(tn['hll'])
@@ -713,7 +741,8 @@ def parse_and_write_node_data(nodedata, stats_path, subs_path, stranded):
         dm1n = tn['dm1'] - tn['div']
 
         # write 
-        row = [int(node), taxname, tn['total_reads'],
+        if pmds_in_bam:
+            row = [int(node), taxname, tn['total_reads'],
                round(dp1n,4), round(dm1n,4), numuniquekmers, round(duplicity,2),
                round(tn['meanlength'], 2), round(tn['div'], 4), round(tn['ani'], 4), 
                round(tn['avgperreadgini'], 4), 
@@ -721,6 +750,15 @@ def parse_and_write_node_data(nodedata, stats_path, subs_path, stranded):
                round(tn['dm1'],4), 
                tn['total_alignments'], 
                round(tn['pmdsover2']/tn['total_reads'],3), round(tn['pmdsover4']/tn['total_reads'], 3),  
+               tn['tax_path']] 
+        else:
+            row = [int(node), taxname, tn['total_reads'],
+               round(dp1n,4), round(dm1n,4), numuniquekmers, round(duplicity,2),
+               round(tn['meanlength'], 2), round(tn['div'], 4), round(tn['ani'], 4), 
+               round(tn['avgperreadgini'], 4), 
+               round(tn['avggc'], 3), round(tn['dp1'],4), 
+               round(tn['dm1'],4), 
+               tn['total_alignments'], 
                tn['tax_path']] 
         rows.append(row)
 
@@ -739,130 +777,233 @@ def parse_and_write_node_data(nodedata, stats_path, subs_path, stranded):
 
     print("Wrote final stats and subs files. Done!")
 
+
 def extract_reads(in_lca, in_bam, out_bam, keyword):
-
-    lcaheaderlines = 0
-    with open(in_lca, 'r') as lcafile:
-        for lcaline in lcafile:
-            if "root" in lcaline:
-                break
-            lcaheaderlines += 1
-
-    with pysam.AlignmentFile(in_bam, "rb", check_sq=False, require_index=False) as infile, \
-         pysam.AlignmentFile(out_bam, "wb", header=infile.header) as outfile, \
-         open(in_lca, 'r') as lcafile:
-
-        for _ in range(lcaheaderlines):
-            lcaline = next(lcafile)
-
-        # read the first LCA line and extract the read name and check if it's got the keyword in it
-        lcaline = next(lcafile)
-        iskeywordinlca = keyword in lcaline
-        tab_split = lcaline.find('\t')
-        colon_split = lcaline[:tab_split].rsplit(':', 3)[0]
-        lcareadname = colon_split
-        currentlymatching = False
-        notdone = True
-
-        try:
-            bamread = next(infile)
-        except StopIteration:
-            sys.exit("Looks like your bam file is empty.")
-
-        # iterate the lca file until you hit a keyword match. then, iterate the bam file until you hit the lca readname, and write all of those. 
-        # then iterate the lca file again. 
-        while notdone:
-            if iskeywordinlca:
-                # iterate the bam file until you find a match
-                tab_split = lcaline.find('\t')
-                colon_split = lcaline[:tab_split].rsplit(':', 3)[0]
-                lcareadname = colon_split
-                currentlymatching = bamread.query_name == lcareadname
-                while not currentlymatching: # iterate until you hit the first instance of the read in the bam file
-                    bamread = next(infile)
-                    currentlymatching = bamread.query_name == lcareadname
-                # now assume you are matching
-                outfile.write(bamread)
-                while currentlymatching:
-                    try:
-                        bamread = next(infile)
-                        currentlymatching = bamread.query_name == lcareadname
-                        if currentlymatching:
-                            outfile.write(bamread)
-                        else:
-                            # done matching with this read name. increment the lca file
-                            try:
-                                lcaline = next(lcafile)
-                                iskeywordinlca = keyword in lcaline
-                            except StopIteration: 
-                                notdone = False # done the lca file
-                                break 
-                    except StopIteration:
-                        notdone = False
-                        break # done the bam file
-            else:
-                while not iskeywordinlca:
-                    try:
-                        lcaline = next(lcafile)
-                        iskeywordinlca = keyword in lcaline
-                    except StopIteration:
-                        notdone = False
-                        break # done the lca file 
+    # a very basic wrapper for grep / awk / samtools view.
+    # writes a temp file with readnames, because that's what samtools view wants. 
+    # actually i did try to do this more cleverly, using the known ordering of bam and lca, but it was slower.
+    tmp_file = f"{out_bam}.readnames.tmp"
+    grep_command = (
+        f"grep {keyword} {in_lca} | awk -F'\\t' '{{print $1}}' "
+        f"| awk -F':' '{{for(i=1; i<=NF-3; i++) printf $i (i<NF-3 ? \":\" : \"\\n\")}}' > {tmp_file}"
+    )
+    result = subprocess.run(grep_command, shell=True)
+    if result.returncode != 0:
+        print(f"No matches found for keyword: {keyword} or grep/awk command failed.")
+        return
+    pysam.view("-N", tmp_file, "-b", in_bam, "-o", out_bam, catch_stdout=False)
+    try:
+        os.remove(tmp_file)
+    except OSError as e:
+        print(f"Error: {tmp_file} : {e.strerror}")
 
 
+def make_damage_plot(subs,tax,plotfile):
+    # just damage from the subs file; should be super fast 
 
+    if matplotlib_imported == False:
+        print(f"Error: Cannot find matplotlib library for plotting. Try: pip install matplotlib")
+        return
 
-def plotter(in_bam, subs, tax, stranded, plotfile):
+    with open(subs, 'r') as f:
+        file_content = f.readlines()
 
-    ds_tags = {}
-    nm_tags = {}
-    read_lengths = {}
+    tax_pattern = f"^{tax}\\t" if tax.isdigit() else tax
+    matched_line = [line for line in file_content if re.match(tax_pattern, line)]
+
+    if len(matched_line) == 0:
+        matched_line = [line for line in file_content if tax.lower() in line.lower()]  # capitalization error?
+        if len(matched_line) == 1:
+            taxstring = matched_line[0].split('\t')[:2]
+            print(f"There was no exact match for your input tax string in the subs file, but a close match was found and will be used: {taxstring}")
+        else:
+            raise ValueError(f"No matching lines found for the given tax strings in the subs file.")
+    elif len(matched_line) > 1:
+        raise ValueError("More than one matching line found. Please be more specific, e.g. by using a tax id instead of a name.")
+
+    split_line = matched_line[0].split('\t')
+    tax_id, tax_name, data_part = split_line[0], split_line[1], split_line[2]
+    data_items = data_part.split()
+
+    positions = list(range(-15, 0)) + list(range(1, 16))
+    values = {'Other': [0] * 30, 'CT': [0] * 30, 'GA': [0] * 30}
+
+    for item in data_items:
+        parts = item.split(":")
+        sub_type = parts[0]  
+        freq = float(parts[1])  
+        if "None" not in sub_type:  
+            sub_key = sub_type[:2]  
+            pos = int(sub_type[2:]) 
+            if -15 <= pos <= 15:
+                if sub_key in values:
+                    values[sub_key][positions.index(pos)] = freq
+                else:
+                    values['Other'][positions.index(pos)] += freq  #
+
+    max_y = max(max(values['Other']), max(values['CT']), max(values['GA'])) * 1.1
+
+    plt.figure(figsize=(10, 5))
+    color_palette = {'Other': '#009E73', 'CT': '#F8766D', 'GA': '#56B4E9'}  # colorblind friendly!
+
+    ax1 = plt.subplot(1, 2, 1)
+    for key in values:
+        ax1.plot([str(pos) for pos in positions if pos > 0],
+                 [values[key][i] for i, pos in enumerate(positions) if pos > 0],
+                 label=key, color=color_palette[key], linewidth=2) 
+    ax1.set_ylim(0, max_y)
+    ax1.set_xlabel('Position')
+    ax1.set_ylabel('Frequency')
+    ax1.yaxis.set_ticks_position('left') 
+    ax1.tick_params(right=False)
+
+    ax2 = plt.subplot(1, 2, 2)
+    for key in values:
+        ax2.plot([str(pos) for pos in positions if pos < 0],
+                 [values[key][i] for i, pos in enumerate(positions) if pos < 0],
+                 label=key, color=color_palette[key], linewidth=2)  
+    ax2.set_ylim(0, max_y)  
+    ax2.set_xlabel('Position')
+    ax2.yaxis.set_ticks_position('right')  
+    ax2.tick_params(left=False)
+    ax2.legend(labels=['Other', 'C to T', 'G to A'], loc='upper left')
+
+    plt.suptitle(f'Damage Plot for {tax_name} (Tax ID: {tax_id})')
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+
+    file_extension = os.path.splitext(plotfile)[1].lower()
+    if file_extension == '.pdf':
+        plt.savefig(plotfile, format='pdf')
+    else:
+        if file_extension != '.png':
+            print("Warning: Invalid plot file suffix. Your plot file is being saved in .png format with the filename you requested.")
+        plt.savefig(plotfile) 
+
+    plt.close()
+
+def make_baminfo_plot(in_bam, plotfile):
+
+    if matplotlib_imported == False:
+        print(f"Error: Cannot find matplotlib library for plotting. Try: pip install matplotlib")
+        return
+
+    bamfile = pysam.AlignmentFile(in_bam, "rb")
     
-    with pysam.AlignmentFile(in_bam, "rb") as bam:
-        for read in bam:
-            if read.has_tag("DS"):
-                ds_tag = read.get_tag("DS")
-                if ds_tag in ds_tags:
-                    ds_tags[ds_tag] += 1
+    mismatch_counts = {}  
+    read_length_counts = {}  
+    
+    current_readname = None
+    mismatch_bins = {}  
+    alignment_count = 0
+    current_read_length = 0
+    total_reads = 0
+
+    for read in bamfile:
+        readname = read.query_name
+
+        if readname != current_readname:
+            if current_readname is not None:
+                for mismatch_bin, count in mismatch_bins.items():
+                    fraction = count / alignment_count
+                    if mismatch_bin not in mismatch_counts:
+                        mismatch_counts[mismatch_bin] = fraction
+                    else:
+                        mismatch_counts[mismatch_bin] += fraction
+
+                if current_read_length not in read_length_counts:
+                    read_length_counts[current_read_length] = 1
                 else:
-                    ds_tags[ds_tag] = 1
-            if read.has_tag("NM"):
-                nm_tag = read.get_tag("NM")
-                if nm_tag in nm_tags:
-                    nm_tags[nm_tag] += 1
-                else:
-                    nm_tags[nm_tag] = 1
-            read_length = read.query_length
-            if read_length in read_lengths:
-                read_lengths[read_length] += 1
+                    read_length_counts[current_read_length] += 1
+
+                total_reads += 1
+
+            current_readname = readname
+            mismatch_bins = {}  
+            alignment_count = 0
+            current_read_length = read.query_length
+
+        mismatches = read.get_tag("NM") if read.has_tag("NM") else 0
+        if mismatches not in mismatch_bins:
+            mismatch_bins[mismatches] = 1
+        else:
+            mismatch_bins[mismatches] += 1
+
+        alignment_count += 1
+
+    if current_readname is not None:
+        for mismatch_bin, count in mismatch_bins.items():
+            fraction = count / alignment_count
+            if mismatch_bin not in mismatch_counts:
+                mismatch_counts[mismatch_bin] = fraction
             else:
-                read_lengths[read_length] = 1
+                mismatch_counts[mismatch_bin] += fraction
 
-        print(ds_tags)
-        print(nm_tags)
-        print(read_lengths)
+        if current_read_length not in read_length_counts:
+            read_length_counts[current_read_length] = 1
+        else:
+            read_length_counts[current_read_length] += 1
 
-    # to do : plot it here in python, dude :) and pull the damage out of the subs file 
+        total_reads += 1
+
+    bamfile.close()
+
+    x_mismatch_values = sorted(mismatch_counts.keys())
+    y_mismatch_values = [mismatch_counts[x] / total_reads for x in x_mismatch_values]
+
+    x_readlength_values = sorted(read_length_counts.keys())
+    y_readlength_values = [read_length_counts[x] for x in x_readlength_values]
+
+    plt.figure(figsize=(10, 5))
+
+    plt.subplot(1, 2, 1)
+    plt.plot(x_mismatch_values, y_mismatch_values, marker='o', linestyle='-', color='#009E73')
+    plt.xlabel("Number of mismatches")
+    plt.ylabel("Frequency (per read)")
+    plt.title("Mismatch Frequency Plot")
+    plt.xticks(x_mismatch_values)
+    plt.grid(False)
+
+    plt.subplot(1, 2, 2)
+    plt.plot(x_readlength_values, y_readlength_values, marker='o', linestyle='-', color='#CC79A7')
+    plt.xlabel("Read length")
+    plt.ylabel("Number of reads")
+    plt.title("Read Length Distribution")
+    plt.grid(False)
+
+    plt.tight_layout()
+
+    file_extension = os.path.splitext(plotfile)[1].lower()
+    if file_extension == '.pdf':
+        plt.savefig(plotfile, format='pdf')
+    else:
+        if file_extension != '.png':
+            print("Warning: Invalid plot file suffix. Your plot file is being saved in .png format, using the filename you specified.")
+        plt.savefig(plotfile)
+
+    plt.close()
 
 def shrink(args):
-    write_shortened_lca(args.in_lca, args.out_lca, args.upto, args.mincount, args.exclude_keywords, args.exclude_under)
-    write_shortened_bam(args.in_bam, args.out_lca, args.out_bam, args.stranded, args.minsim)
+    shortlcalines = write_shortened_lca(args.in_lca, args.out_lca, args.upto, args.mincount, args.exclude_keywords, args.exclude_under)
+    write_shortened_bam(args.in_bam, args.out_lca, args.out_bam, args.stranded, args.minsim, args.annotate_pmd, shortlcalines)
 
 def compute(args):
-    nodedata = gather_subs_and_kmers(args.in_bam, args.in_lca, kr=args.kr, kn=args.kn, upto=args.upto, stranded=args.stranded)
-    parse_and_write_node_data(nodedata, args.out_stats, args.out_subs, args.stranded)  
+    nodedata, pmds_in_bam = gather_subs_and_kmers(args.in_bam, args.in_lca, kr=args.kr, kn=args.kn, upto=args.upto, stranded=args.stranded)
+    parse_and_write_node_data(nodedata, args.out_stats, args.out_subs, args.stranded, pmds_in_bam)  
 
 def extract(args):
     extract_reads(args.in_lca, args.in_bam, args.out_bam, args.keyword)
 
-def plot(args):
-    plotter(args.in_bam, args.in_subs, args.tax, args.stranded, args.outplot, args.r_script_path)
+def plotdamage(args):
+    make_damage_plot(args.in_subs, args.tax, args.outplot)
+
+def plotbaminfo(args):
+    make_baminfo_plot(args.in_bam, args.outplot)
 
 def main():
 
     # Initialize
     parser = argparse.ArgumentParser(
-        description="Bamdam processes LCA and bam files for ancient environmental DNA. Type bamdam command -h for more detailed help regarding a specific command.")
+        description="Bamdam processes ancient environmental DNA bam and lca files. Type bamdam [command] -h for more detailed help regarding a specific command.")
     
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -878,8 +1019,9 @@ def main():
     parser_shrink.add_argument("--minsim", type=float, default=0.9, help="Minimum similarity to reference to keep an alignment (default: 0.9)")
     parser_shrink.add_argument("--exclude_keywords", type=str, nargs='+', default=[], help="Keyword(s) to exclude when filtering (default: none)")
     parser_shrink.add_argument("--exclude_keyword_file", type=str, default=None, help="File of keywords to exclude when filtering, one per line (default: none)")
-    parser_shrink.add_argument("--exclude_under", action='store_true', help="Include this flag if you also want to exclude all nodes underneath the ones you've specified (default: not set)")
-    parser_shrink.set_defaults(func=shrink)
+    parser_shrink.add_argument("--exclude_under", action='store_true', help="Include this flag to exclude all nodes underneath the ones you've specified (default: not set)")
+    parser_shrink.add_argument("--annotate_pmd", action='store_true', help="Include this flag to annotate your bam file with PMD tags (default: not set)")
+    parser_shrink.set_defaults(func=shrink) 
 
     # Compute
     parser_compute = subparsers.add_parser('compute', help="Compute subs and stats files.")
@@ -901,15 +1043,18 @@ def main():
     parser_extract.add_argument("--keyword", type=str, required=True, help="Keyword or phrase to filter for, e.g. a taxonomic node ID (required)")
     parser_extract.set_defaults(func=extract)
 
-    # Plot
-    parser_plot = subparsers.add_parser('plot', help="Bamdam plot is not done yet!!! Do not use this yet!")
-                                        # Plot read length, edit distance, damage and PMD score distributions for a specified taxonomic node.")
-    parser_plot.add_argument("--in_bam", type=str, required=True, help="Path to the BAM file containing only reads assigned to the specified node (required)")
-    parser_plot.add_argument("--in_subs", type=str, required=True, help="Path to the subs file produced by bamdam compute (required)")
-    parser_plot.add_argument("--tax", type=str, required=True, help="Taxonomic node ID (required)")
-    parser_plot.add_argument("--stranded", type=str, required=True, help="Either ss for single stranded or ds for double stranded (required)")
-    parser_plot.add_argument("--outplot", type=str, default="bamdam_plot.png", help="Filename for the output plot, ending in .png or .pdf (default: bamdam_plot.png)")
-    parser_plot.set_defaults(func=plot)
+    # Plot damage
+    parser_plotdamage = subparsers.add_parser('plotdamage', help="Produces a postmortem damage plot for a specified taxonomic node using the subs file.")
+    parser_plotdamage.add_argument("--in_subs", type=str, required=True, help="Path to the subs file produced by bamdam compute (required)")
+    parser_plotdamage.add_argument("--tax", type=str, required=True, help="Taxonomic node ID (required)")
+    parser_plotdamage.add_argument("--outplot", type=str, default="damage_plot.png", help="Filename for the output plot, ending in .png or .pdf (default: damage_plot.png)")
+    parser_plotdamage.set_defaults(func=plotdamage)
+
+    # Plot bam info
+    parser_plotbaminfo = subparsers.add_parser('plotbaminfo', help="Produces a mismatch and read length distribution plot for an input bam.")
+    parser_plotbaminfo.add_argument("--in_bam", type=str, required=True, help="Path to the BAM file (required)")
+    parser_plotbaminfo.add_argument("--outplot", type=str, default="baminfo_plot.png", help="Filename for the output plot, ending in .png or .pdf (default: baminfo_plot.png)")
+    parser_plotbaminfo.set_defaults(func=plotbaminfo)
 
     args = parser.parse_args()
 
@@ -939,22 +1084,20 @@ def main():
     if hasattr(args, 'upto') and args.upto != args.upto.lower():
         parser.warning(f"Warning: {args.upto} as provided is not in lowercase. Converting to lowercase and moving on.")
         args.upto = args.upto.lower()
-        
-    sortorder = get_sorting_order(args.in_bam)
-    if sortorder != "queryname":
-        print("Error: Your bam file does not appear to be read-sorted. Please try again with it once it has been read-sorted (samtools sort -n), which should be the same order as your lca file. \n")
-        exit(-1) # remove this line to force continue
+    
+    if hasattr(args, 'in_bam') and args.command != "plotbaminfo":
+        sortorder = get_sorting_order(args.in_bam)
+        if sortorder != "queryname":
+            print("Error: Your bam file does not appear to be read-sorted. Please try again with it once it has been read-sorted (samtools sort -n), which should be the same order as your lca file. \n")
+            exit(-1) # remove this line to force continue
 
-    # Deal with exclude keywords
+    # deal with exclude keywords
     if hasattr(args, 'exclude_keywords') or hasattr(args, 'exclude_keyword_file'):
         if args.exclude_keywords and args.exclude_keyword_file:
             parser.error("Please only provide one of --exclude_keywords or --exclude_keyword_file, not both.")
-        # Initialize exclude_keywords
         exclude_keywords = args.exclude_keywords
-        # Make it a list if it's not already
         if type(exclude_keywords) != type([]):
             exclude_keywords = [exclude_keywords]
-        # Read exclude keywords from file if provided
         if args.exclude_keyword_file:
             if not os.path.exists(args.exclude_keyword_file):
                 parser.error(f"Exclude keyword file path does not exist: {args.exclude_keyword_file}")
@@ -977,6 +1120,8 @@ def main():
             print(f"exclude_keywords: {args.exclude_keywords}")
         if hasattr(args, 'exclude_keyword_file') or hasattr(args, 'exclude_keywords'):
             print(f"exclude_under: {args.exclude_under}")
+        if hasattr(args, 'annotate_pmd') and args.annotate_pmd:
+            print(f"annotate_pmd: {args.annotate_pmd}")
 
     elif args.command == 'compute':
         print("Hello! You are running bamdam compute with the following arguments:")
@@ -996,13 +1141,8 @@ def main():
         print(f"out_bam: {args.out_bam}")
         print(f"keyword: {args.keyword}")
 
-    elif args.command == 'plot':
-        print("Hello! Plot is not functional yet!!! ") # You are running bamdam plot with the following arguments:")
-        print(f"in_bam: {args.in_bam}")
-        print(f"in_subs: {args.in_subs}")
-        print(f"tax: {args.tax}")
-        print(f"stranded: {args.stranded}")
-        print(f"outplot: {args.outplot}")
+    if not tqdm_imported:
+        print("The library tqdm is not available, so progress bars will not be shown. This will not impact performance.")
 
     if hasattr(args, 'func'):
         args.func(args)
@@ -1012,14 +1152,4 @@ def main():
 if __name__ == "__main__":
     main()
 
-
-###### Minor comments
-
-# Sometimes ngslca spits out duplicate lines. I don't know why. If it's causing problems, get rid of them before running! Like this
-# awk '!seen[$0]++' input_lca > output_lca
-
-# Ideally use the full tax node information when passing keywords.
-# Specifying just 'Pedicularis' will also remove all reads mapping to the node 669767:Pedicularis hirsuta:species,
-# even if you meant to exclude only the genus level node 43174:Pedicularis:genus and set exclude_under = False.
-# On the other hand, specifying 43174:Pedicularis:genus or 43174:Pedicularis will act predictably.
 
