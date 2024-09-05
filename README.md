@@ -1,5 +1,3 @@
-# bamdam: A post-mapping toolkit for ancient environmental DNA capture or shotgun sequencing data
-
 ## <a name="quickstart"></a>Quick start
 
 ```sh
@@ -25,7 +23,7 @@ chmod +x bamdam
 
 ## <a name="intro"></a>Introduction
 
-The goal of this toolkit is to provide functionality after capture or shotgun sequencing ancient environmental DNA reads have been mapped to a reference database and run through the least common ancestor algorithm [ngsLCA](https://github.com/miwipe/ngsLCA). The input to bamdam is a query-sorted bam (also required by ngsLCA) and the .lca file which is output by ngsLCA. 
+Bamdam is a post-mapping toolkit for ancient environmental DNA capture or shotgun sequencing data. The goal of this toolkit is to provide functionality after capture or shotgun sequencing ancient environmental DNA reads have been mapped to a reference database and run through the least common ancestor algorithm [ngsLCA](https://github.com/miwipe/ngsLCA). The input to bamdam is a query-sorted bam (also required by ngsLCA) and the .lca file which is output by ngsLCA. 
 
 The main two functions are bamdam **shrink** and bamdam **compute**. When mapping against large databases such as NCBI or RefSeq, the output bam files will often be huge and full of irrelevant alignments. In particular, a common scenario is that a minority of reads account for the majority of alignments and are assigned to deep and uninformative taxonomic nodes (e.g. "root" or "Viridiplantae:kingdom"). Bamdam shrink produces a much smaller bam (and associated lca file) which still contains all informative alignments, allowing the user to choose a phylogenetic level to keep assignments up to (e.g. "family") among other parameters. Bamdam shrink also supports the usage of a previously subsetted lca file as long as the original ordering is preserved, allowing users to fully configure shrink to their own needs. Bamdam compute then takes in a (shrunken) bam and lca file, and produces a large stats table with one row per taxonomic node, including authentication metrics such as postmortem damage, k-mer duplicity (a reliable evenness-of-coverage proxy), divergence, mean read length, and much more (see below). Users can then set their own filtering thresholds to decide which taxa look like real ancient taxa, rather than modern environmental, lab, or database contaminants. 
 
@@ -121,4 +119,4 @@ To do :)
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.
 
-BamDam was written by Bianca De Sanctis in 2024. For assistance please contact bddesanctis@gmail.com.
+Bamdam was written by Bianca De Sanctis in 2024. For assistance please contact bddesanctis@gmail.com.
