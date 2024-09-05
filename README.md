@@ -16,12 +16,15 @@ chmod +x bamdam
 
 ## Table of Contents
 - [Quick start](#quickstart)
-- [Introduction](#intro)
+- [Description](#description)
 - [Usage](#use)
   - [shrink](#shrink)
   - [compute](#compute)
+  - [extract](#extract)
+  - [plotdamage](#plotdamage)
+  - [plotbaminfo](#plotbaminfo)
 
-## <a name="intro"></a>Introduction
+## <a name="description"></a>Description
 
 Bamdam is a post-mapping toolkit for ancient environmental DNA capture or shotgun sequencing data. The goal of this toolkit is to provide functionality after capture or shotgun sequencing ancient environmental DNA reads have been mapped to a reference database and run through the least common ancestor algorithm [ngsLCA](https://github.com/miwipe/ngsLCA). The input to bamdam is a query-sorted bam (also required by ngsLCA) and the .lca file which is output by ngsLCA. 
 
@@ -35,7 +38,7 @@ Bamdam is not particularly optimized for speed, and doesn't support threading (m
 
 ### <a name="shrink"></a>bamdam shrink
 
-Input: Query-sorted bam file and associated lca file. Output: Smaller query-sorted bam file and associated lca file.
+Input: Read-sorted bam file and associated lca file. Output: Smaller read-sorted bam file and associated lca file.
 
 ```
 usage: bamdam shrink [-h] --in_lca IN_LCA --in_bam IN_BAM --out_lca OUT_LCA --out_bam OUT_BAM --stranded STRANDED [--mincount MINCOUNT] [--upto UPTO]
@@ -44,8 +47,8 @@ usage: bamdam shrink [-h] --in_lca IN_LCA --in_bam IN_BAM --out_lca OUT_LCA --ou
 
 options:
   -h, --help            show this help message and exit
-  --in_lca IN_LCA       Path to the original (sorted) LCA file (required)
-  --in_bam IN_BAM       Path to the original (sorted) BAM file (required)
+  --in_lca IN_LCA       Path to the input LCA file (required)
+  --in_bam IN_BAM       Path to the input (read-sorted) BAM file (required)
   --out_lca OUT_LCA     Path to the short output LCA file (required)
   --out_bam OUT_BAM     Path to the short output BAM file (required)
   --stranded STRANDED   Either ss for single stranded or ds for double stranded (required)
@@ -68,7 +71,6 @@ Bamdam shrink will also optionally annotate the new bam file with PMD scores as 
 
 Input: Query-sorted bam and associated lca file. Output: Stats file and subs file.
 
-Usage and options: 
 ```
 usage: bamdam compute [-h] --in_bam IN_BAM --in_lca IN_LCA --out_stats OUT_STATS --out_subs OUT_SUBS --stranded STRANDED [--kr KR] [--kn KN] [--upto UPTO]
 
@@ -112,9 +114,30 @@ If the input bam file was annotated with PMD scores, the stats file will also co
 
 In all cases unless otherwise specified, each read (not each alignment) is weighted equally.
 
-### Accessory scripts: bamdam extract, plotdamage and plotbaminfo
+### <a name="extract"></a>bamdam extract
 
-To do :)
+A straightforward bash wrapper function to extract reads assigned to a specific taxonomic node from a bam file. Output is another bam file. Not very fast (bam i/o is slow).
+
+```
+./bamdam extract --in_bam A2.bam --in_lca A2.lca --keyword "Mammuthus" --out_bam A2mammuthus.bam
+```
+
+### <a name="plotdamage"></a>bamdam plotdamage
+
+Plots a postmortem damage "smiley" plot using the subs file produced from bamdam compute. Fast.
+
+```
+./bamdam plotdamage --in_subs A.subs.txt --tax "37348" --outplot A_mammuthus_damage_plot.png
+```
+
+### <a name="plotbaminfo"></a>bamdam plotbaminfo
+
+Plots mismatch and read length distributions. Mostly intended to be used after bamdam extract. Not very fast for large input bam (bam i/o is slow).
+
+```
+./bamdam plotbaminfo --in_bam A2mammuthus.bam --outplot A_mammuthus_baminfo_plot.png
+```
+
 
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.
