@@ -1,6 +1,6 @@
 ## <a name="quickstart"></a>Quick start
 
-```sh
+```
 # install dependencies
 pip install pysam hyperloglog matplotlib tqdm  # tqdm is not strictly necessary and matplotlib is only needed for plotting
 
@@ -29,7 +29,7 @@ The main two functions are bamdam **shrink** and bamdam **compute**. When mappin
 
 There are an additional three accessory functions: bamdam **extract**, **plotdamage**, and **plotbaminfo**. Bamdam extract is a basic wrapper function that extracts reads assigned to a specific taxonomic node from a bam file into another bam file for downstream analyses. Bamdam plotdamage uses the subs file, a secondary output from bamdam compute, to quickly produce a postmortem damage "smiley" plot for a specified taxonomic node. Bamdam plotbaminfo takes a bam file as input (e.g. from bamdam extract), and plots the mismatch and read length distributions.
 
-Bamdam is not particularly optimized for speed, and doesn't support threading (much of the effort is spent on bam file I/O). On the other hand, it reads line-by-line and never a full bam file at once, so it shouldn't need too much RAM. Running bamdam shrink and then compute with default parameters on a 20GB bam takes two hours on my laptop, and this should scale close to linearly, although this will depend on how densely informative your data is (e.g. capture data may take longer than shotgun). Lastly, bamdam does not shrink the bam header itself because it is not efficient to do it this way, but an accessory script removeunnecessaryheaders.sh is provided to shrink a bam header if needed, which we recommend using before merging bams if mapping to a large database in parallel. 
+Bamdam is not particularly optimized for speed, and doesn't support threading (much of the effort is spent on bam file I/O). On the other hand, it reads line-by-line and never a full bam file at once, so it shouldn't need too much RAM. Running bamdam shrink and then compute with default parameters on a 20GB bam takes two hours on my laptop, and this should scale close to linearly, although this will depend on how densely informative your data is (e.g. capture data may take longer than shotgun). Lastly, bamdam does not remove unmapped references from the bam header itself because it is not efficient to do it this way, but it is easy to do this yourself with samtools, or with an existing tool such as [bamAlignCleaner](https://github.com/maxibor/bamAlignCleaner). We recommend removing unmapped references from the header immediately after mapping, before merging the bams (if applicable), and before query-sorting the bam and running ngsLCA. 
 
 ## <a name="use"></a>Usage
 
@@ -37,7 +37,7 @@ Bamdam is not particularly optimized for speed, and doesn't support threading (m
 
 Input: Query-sorted bam file and associated lca file. Output: Smaller query-sorted bam file and associated lca file.
 
-```sh
+```
 usage: bamdam shrink [-h] --in_lca IN_LCA --in_bam IN_BAM --out_lca OUT_LCA --out_bam OUT_BAM --stranded STRANDED [--mincount MINCOUNT] [--upto UPTO]
                      [--minsim MINSIM] [--exclude_keywords EXCLUDE_KEYWORDS [EXCLUDE_KEYWORDS ...]] [--exclude_keyword_file EXCLUDE_KEYWORD_FILE]
                      [--exclude_under] [--annotate_pmd]
@@ -69,7 +69,7 @@ Bamdam shrink will also optionally annotate the new bam file with PMD scores as 
 Input: Query-sorted bam and associated lca file. Output: Stats file and subs file.
 
 Usage and options: 
-```sh
+```
 usage: bamdam compute [-h] --in_bam IN_BAM --in_lca IN_LCA --out_stats OUT_STATS --out_subs OUT_SUBS --stranded STRANDED [--kr KR] [--kn KN] [--upto UPTO]
 
 options:
