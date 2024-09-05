@@ -1009,8 +1009,8 @@ def main():
 
     # Shrink
     parser_shrink = subparsers.add_parser('shrink', help="Filter the BAM and LCA files.")
-    parser_shrink.add_argument("--in_lca", type=str, required=True, help="Path to the original (sorted) LCA file (required)")
-    parser_shrink.add_argument("--in_bam", type=str, required=True, help="Path to the original (sorted) BAM file (required)")
+    parser_shrink.add_argument("--in_lca", type=str, required=True, help="Path to the input LCA file (required)")
+    parser_shrink.add_argument("--in_bam", type=str, required=True, help="Path to the input (read-sorted) BAM file (required)")
     parser_shrink.add_argument("--out_lca", type=str, required=True, help="Path to the short output LCA file (required)")
     parser_shrink.add_argument("--out_bam", type=str, required=True, help="Path to the short output BAM file (required)")
     parser_shrink.add_argument("--stranded", type=str, required=True, help="Either ss for single stranded or ds for double stranded (required)")
@@ -1019,8 +1019,8 @@ def main():
     parser_shrink.add_argument("--minsim", type=float, default=0.9, help="Minimum similarity to reference to keep an alignment (default: 0.9)")
     parser_shrink.add_argument("--exclude_keywords", type=str, nargs='+', default=[], help="Keyword(s) to exclude when filtering (default: none)")
     parser_shrink.add_argument("--exclude_keyword_file", type=str, default=None, help="File of keywords to exclude when filtering, one per line (default: none)")
-    parser_shrink.add_argument("--exclude_under", action='store_true', help="Include this flag to exclude all nodes underneath the ones you've specified (default: not set)")
-    parser_shrink.add_argument("--annotate_pmd", action='store_true', help="Include this flag to annotate your bam file with PMD tags (default: not set)")
+    parser_shrink.add_argument("--exclude_under", action='store_true', help="Do not keep nodes below criteria-meeting nodes unless they also meet criteria themselves (default: not set)")
+    parser_shrink.add_argument("--annotate_pmd", action='store_true', help="Annotate output bam file with PMD tags  (default: not set)")
     parser_shrink.set_defaults(func=shrink) 
 
     # Compute
@@ -1030,8 +1030,8 @@ def main():
     parser_compute.add_argument("--out_stats", type=str, required=True, help="Path to the output stats file (required)")
     parser_compute.add_argument("--out_subs", type=str, required=True, help="Path to the output subs file (required)")
     parser_compute.add_argument("--stranded", type=str, required=True, help="Either ss for single stranded or ds for double stranded (required)")
+    parser_compute.add_argument("--kn", type=int, default=29, help="Value of k for per-node counts of unique k-mers and duplicity (default: 29)")
     parser_compute.add_argument("--kr", type=int, default=5, help="Value of k for per-read kmer complexity calculation (default: 5)")
-    parser_compute.add_argument("--kn", type=int, default=29, help="Value of k for per-node counts of unique k-mers (default: 29)")
     parser_compute.add_argument("--upto", type=str, default="family", help="Keep nodes up to and including this tax threshold; use root to disable (default: family)")
     parser_compute.set_defaults(func=compute)
 
