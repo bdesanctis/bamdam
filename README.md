@@ -1,218 +1,122 @@
 # bamdam: A post-mapping toolkit for ancient environmental DNA capture or shotgun sequencing data
 
-## Update Aug 27 
-
-I pushed a major update to the main bamdam script just now. I have not had time to update the readme below yet. In the meantime, here is a small tutorial on the new code structure. Assume you have your readname-sorted bam file A.bam and the file A.lca you got after running ngsLCA on A.bam. To use base bamdam in double stranded mode, do:
+## <a name="quickstart"></a>Quick start
 
 ```sh
-bamdam shrink --in_bam A.bam --in_lca A.lca --out_bam A2.bam --out_lca A2.lca --stranded ds
-bamdam compute --in_bam A2.bam --in_lca A2.lca --out_stats A_stats.txt --out_subs A_subs.txt --stranded ds
-```
+# install dependencies
+pip install pysam hyperloglog matplotlib tqdm  # tqdm is not strictly necessary and matplotlib is only needed for plotting
 
-and then you will obtain a big file A_stats.txt containing many useful metrics. The most important ones are: (1) duplicity, or the number of times an average 29-mer appeared in all the reads assigned to that node, which should be barely larger than 1 unless you have very high coverage for real taxa, (2) ND+1 and ND-1, normalized damage, which should be positive for ancient taxa (their unnormalized versions are later in Damaged+1 and Damaged-1). Hopefully the others speak for themselves or are outlined below.
-
-For help, type
-
-```sh
-bamdam --help
-bamdam shrink --help
-bamdam compute --help
-```
-
-Bamdam extract also exists but you probably won't need it right now. Bamdam plot is not finished and will not work just yet. Accessory scripts in this repo are no longer relevant. 
-
-Big readme update coming soon :)
-
-
-## Table of Contents
-- [Description](#description)
-- [Installation](#installation)
-- [Main Script](#main-script)
-- [Accessory scripts](#damage-plotting-script)
-- [Coming Soon](#coming-soon)
-
-## Description
-
-WARNING - this software is still in development. Things are changing often here!
-
-Please contact me with any issues, unexpected behavior, or requests. bddesanctis@gmail.com
-
-Welcome to bamdam! The goal of this toolkit is to provide functionality after capture or shotgun sequencing aeDNA reads have been mapped to a reference database and run through a least common ancestor algorithm like [ngsLCA](https://github.com/miwipe/ngsLCA) using the reference database taxonomy to obtain an ngsLCA-style .lca file. If you have a lot of data, long term storing these often giant bams post-mapping can be annoying, so the first point of bamdam is to write (much) smaller versions that still include all the relevant information for the project. The second point of bamdam is to compute a ton of read set metrics to determine if a taxonomic node looks like a real ancient taxa, rather than a modern environmental, lab, or database contaminant. 
-
-There are also the following accessory scripts:
-- PlotDamage.R for smiley plots,
-- extractreads.py for quickly extracting reads from a bam belonging to a specific tax id(s), and
-- PlotPMD.R for plotting the PMD score distribution of a taxa. 
-
-Bamdam was heavily inspired by [metaDMG](https://github.com/metaDMG-dev/metaDMG-cpp) and [filterBAM](https://github.com/genomewalker/bam-filter). It is not particularly optimized for speed, and doesn't thread yet. On the other hand, it doesn't ever read a whole file into memory, so it shouldn't need that much RAM (please tell me if you manage to crash it and how). It can subset a 40GB bam to family level in an hour on my laptop and this should scale close to linearly, which feels sufficient for now.
-
-## Installation
-
-Hopefully pretty straightforward. It's got a couple python and R packages as dependencies. 
-
-```sh
+# install bamdam
 git clone https://github.com/bdesanctis/bamdam.git
 cd bamdam
-chmod +x PlotDamage.R
-chmod +x PlotPMD.R
+chmod +x bamdam
+
+# run
+./bamdam shrink --in_bam A.bam --in_lca A.lca --out_bam A2.bam --out_lca A2.lca --stranded ds  # (ds = double stranded library prep)
+./bamdam compute --in_bam A2.bam --in_lca A2.lca --out_stats A_stats.txt --out_subs A_subs.txt --stranded ds
 ```
 
-## Main Script
+## Table of Contents
+- [Quick start](#quickstart)
+- [Introduction](#intro)
+- [Usage](#use)
+  - [shrink](#shrink)
+  - [compute](#compute)
 
-Input: Bam and LCA files. Output: Shortened bam, shortened lca, stats and subs files.
+## <a name="intro"></a>Introduction
 
-The main script BamDam.py will:
-1. Shorten the LCA file to only nodes which are (equal to or below your tax threshold AND which meet your minimum read count), OR are below a node which meets that criteria. You may also give it a list OR file of tax identifiers, and it will exclude all reads assigned to those nodes, and optionally all reads assigned to any nodes below those nodes as well (--exclude_under). For exclusions, you can give it tax IDs, full tax names, or full tax entries; e.g. Homonidae, "Homo sapiens", 4919, etc, but ideally use full tax paths like "4919:Homo sapiens:species".
-2. Shorten the bam file to include only reads which appear in the newly shortened LCA file. This can make 100-1000x or even more difference in the size of a bam file after typical ancient eDNA mapping steps. It will also annotate the new bam file with PMD scores as in PMDTools (in the DS:Z field).
-3. Gather various statistics per node and write to a stats file, sorted by total reads assigned. More information detailing these statistics is below.
-4. Gather substitution patterns per node and write to a subs file, sorted in the same order as the stats file (so line n of the stats file should correspond to line n of the subs file). 
+The goal of this toolkit is to provide functionality after capture or shotgun sequencing ancient environmental DNA reads have been mapped to a reference database and run through the least common ancestor algorithm [ngsLCA](https://github.com/miwipe/ngsLCA). The input to bamdam is a query-sorted bam (also required by ngsLCA) and the .lca file which is output by ngsLCA. 
 
-You may also plot damage plots for individual tax IDs by inputting the subs file into an R script, which is detailed in the next section. 
+The main two functions are bamdam **shrink** and bamdam **compute**. When mapping against large databases such as NCBI or RefSeq, the output bam files will often be huge and full of irrelevant alignments. In particular, a common scenario is that a minority of reads account for the majority of alignments and are assigned to deep and uninformative taxonomic nodes (e.g. "root" or "Viridiplantae:kingdom"). Bamdam shrink produces a much smaller bam (and associated lca file) which still contains all informative alignments, allowing the user to choose a phylogenetic level to keep assignments up to (e.g. "family") among other parameters. Bamdam shrink also supports the usage of a previously subsetted lca file as long as the original ordering is preserved, allowing users to fully configure shrink to their own needs. Bamdam compute then takes in a (shrunken) bam and lca file, and produces a large stats table with one row per taxonomic node, including authentication metrics such as postmortem damage, k-mer duplicity (a reliable evenness-of-coverage proxy), divergence, mean read length, and much more (see below). Users can then set their own filtering thresholds to decide which taxa look like real ancient taxa, rather than modern environmental, lab, or database contaminants. 
 
-Please ensure your input bam is sorted in the same order as your input lca file, and that every read in your LCA file is also in your bam file, both of which will be true by default if you use fresh ngsLCA output. On the other hand, bamdam will be fine if there are reads in your bam that are not in your LCA file, which means you can pre-subset your LCA file if you'd like. Pre-subsetting your lca file may give a speed-up and will end you up with an even smaller bam, which you should consider doing if you only wanted to keep eukaryotes, for example (e.g.: grep "Eukaryot" in.lca > out.lca). Also, for now, please provide a ngsLCA-formatted lca file, not a metaDMG-formatted lca file (they have slightly different formats).
+There are an additional three accessory functions: bamdam **extract**, **plotdamage**, and **plotbaminfo**. Bamdam extract is a basic wrapper function that extracts reads assigned to a specific taxonomic node from a bam file into another bam file for downstream analyses. Bamdam plotdamage uses the subs file, a secondary output from bamdam compute, to quickly produce a postmortem damage "smiley" plot for a specified taxonomic node. Bamdam plotbaminfo takes a bam file as input (e.g. from bamdam extract), and plots the mismatch and read length distributions.
 
-Usage and options: 
+Bamdam is not particularly optimized for speed, and doesn't support threading (much of the effort is spent on bam file I/O). On the other hand, it reads line-by-line and never a full bam file at once, so it shouldn't need too much RAM. Running bamdam shrink and then compute with default parameters on a 20GB bam takes two hours on my laptop, and this should scale close to linearly, although this will depend on how densely informative your data is (e.g. capture data may take longer than shotgun). Lastly, bamdam does not shrink the bam header itself (because it is not efficient to do it this way).
+
+## <a name="use"></a>Usage
+
+### <a name="shrink"></a>bamdam shrink
+
+Input: Query-sorted bam file and associated lca file. Output: Smaller query-sorted bam file and associated lca file.
+
 ```sh
-usage: BamDam.py [-h] --in_lca IN_LCA --in_bam IN_BAM --out_lca OUT_LCA --out_bam OUT_BAM --out_stats OUT_STATS --out_subs OUT_SUBS --stranded STRANDED
-                 [--mincount MINCOUNT] [--k K] [--upto UPTO] [--minsim MINSIM] [--exclude_keywords EXCLUDE_KEYWORDS [EXCLUDE_KEYWORDS ...]] [--exclude_keyword_file EXCLUDE_KEYWORD_FILE]
+usage: bamdam shrink [-h] --in_lca IN_LCA --in_bam IN_BAM --out_lca OUT_LCA --out_bam OUT_BAM --stranded STRANDED [--mincount MINCOUNT] [--upto UPTO]
+                     [--minsim MINSIM] [--exclude_keywords EXCLUDE_KEYWORDS [EXCLUDE_KEYWORDS ...]] [--exclude_keyword_file EXCLUDE_KEYWORD_FILE]
+                     [--exclude_under] [--annotate_pmd]
 
 options:
   -h, --help            show this help message and exit
-  --in_lca              Path to the original (sorted) LCA fil (required)
-  --in_bam              Path to the original (sorted) BAM file (required)
-  --out_lca             Path to the short output LCA file (required)
-  --out_bam             Path to the short output BAM file (required)
-  --out_stats           Path to the output stats file (required)
-  --out_subs            Path to the output subs file (required)
-  --stranded            Either ss for single stranded or ds for double stranded (required)
-  --mincount            Minimum read count to keep a node (default: 5)
-  --k                   Value of k for kmer complexity calculations (default: 5)
-  --upto                Tax threshold, use root to disable (default: family)
-  --minsim              Minimum similarity to reference to keep a read; must match ngslca min similarity (default: 0.95)
-  --exclude_keywords    Keyword(s) to exclude when filtering (default: none)
-  --exclude_keyword_file  File of keywords to exclude when filtering, one per line (default: none)
-  --exclude_under       Set this flag if you also want to exclude all nodes underneath the ones you've specified
-
+  --in_lca IN_LCA       Path to the original (sorted) LCA file (required)
+  --in_bam IN_BAM       Path to the original (sorted) BAM file (required)
+  --out_lca OUT_LCA     Path to the short output LCA file (required)
+  --out_bam OUT_BAM     Path to the short output BAM file (required)
+  --stranded STRANDED   Either ss for single stranded or ds for double stranded (required)
+  --mincount MINCOUNT   Minimum read count to keep a node (default: 5)
+  --upto UPTO           Keep nodes up to and including this tax threshold; use root to disable (default: family)
+  --minsim MINSIM       Minimum similarity to reference to keep an alignment (default: 0.9)
+  --exclude_keywords EXCLUDE_KEYWORDS [EXCLUDE_KEYWORDS ...]
+                        Keyword(s) to exclude when filtering (default: none)
+  --exclude_keyword_file EXCLUDE_KEYWORD_FILE
+                        File of keywords to exclude when filtering, one per line (default: none)
+  --exclude_under       Include this flag to exclude all nodes underneath the ones you've specified (default: not set)
+  --annotate_pmd        Include this flag to annotate your bam file with PMD tags (default: not set)
 ```
-Example usage:
+
+Bamdam shrink will subset your lca file to include only nodes which: ((are at or below your tax threshold) AND which meet your minimum read count), OR (are below a node which meets the former criteria). You can disable the last condition with --exclude_under. You may also give it a list OR file of tax identifiers to exclude (e.g., taxa identified in your control samples). For exclusions, you can give it tax IDs, full tax names, or full tax entries; e.g. Homonidae, "Homo sapiens", 4919, etc, but best practice is to use full tax strings like "4919:Homo sapiens:species". Bamdam shrink will then subset the bam file to include only reads which appear in the newly shortened LCA file, and only alignments of those reads which meet the minimum similarity cutoff. 
+
+Bamdam shrink will also optionally annotate the new bam file with PMD scores as in PMDTools (in the DS:Z field) (--annotate_pmd), but beware PMD score annotation can be slow for large bam files. Please note that as of the time of writing, the original PMDTools has a serious bug in single-stranded mode, so please use bamdam shrink instead if you want to annotate single-stranded data with PMD scores.
+
+### <a name="compute"></a>bamdam compute
+
+Input: Query-sorted bam and associated lca file. Output: Stats file and subs file.
+
+Usage and options: 
 ```sh
-python BamDam.py \
-    --in_lca "S32_minsim95.lca" \
-    --in_bam "S32.sorted.bam" \
-    --out_lca "S32_shortened.lca" \
-    --out_bam "S32_shortened.bam" \
-    --out_stats "S32_stats.txt" \
-    --out_subs "S32_subs.txt" \
-    --stranded ds \
-    --mincount 5 \
-    --k 5 \
-    --upto "family" \
-    --minsim 0.95 \
-    --exclude_keywords "Homonidae" "Felidae" 
+usage: bamdam compute [-h] --in_bam IN_BAM --in_lca IN_LCA --out_stats OUT_STATS --out_subs OUT_SUBS --stranded STRANDED [--kr KR] [--kn KN] [--upto UPTO]
+
+options:
+  -h, --help            show this help message and exit
+  --in_bam IN_BAM       Path to the BAM file (required)
+  --in_lca IN_LCA       Path to the LCA file (required)
+  --out_stats OUT_STATS
+                        Path to the output stats file (required)
+  --out_subs OUT_SUBS   Path to the output subs file (required)
+  --stranded STRANDED   Either ss for single stranded or ds for double stranded (required)
+  --kr KR               Value of k for per-read kmer complexity calculation (default: 5)
+  --kn KN               Value of k for per-node counts of unique k-mers and duplicity (default: 29)
+  --upto UPTO           Keep nodes up to and including this tax threshold; use root to disable (default: family)
 ```
 
-### Explanation of the output stats file columns
+An important metric for ancient environmental DNA authentication is evenness of coverage, but it is not really possible to compute evenness of coverage without resorting to a single reference genome. Instead, bamdam compute estimates the **k-mer duplicity** per taxonomic node using the fast HyperLogLog cardinality estimation algorithm, the same algorithm used to speed up [KrakenUniq](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-018-1568-0). K-mer duplicity refers to the average number of times a k-mer (or its reverse complement) has been seen, and has been shown to be a reliable proxy for evenness of coverage for large values of k. Bamdam uses a value of k=29 by default and an error threshold of 1%. Unless coverage is high, k-mer duplicity should always be close to 1.
+
+Sometimes many low complexity reads will map to the same reference or taxa. It can be unclear whether these taxa are real or not, but they at least warrant further investigation. Bamdam measures the average read complexity per taxonomic node via a per-read k-mer [Gini index](https://en.wikipedia.org/wiki/Gini_coefficient), which is a dispersion metric. Consider for example the low complexity read "ACCTAACCTACCTACCTACCTACCTACCTCCTACCTACCTA", which contains the 5-mer ACCTA a total of 6 times, and so yields a high Gini index of 0.46 using the default k=5. A Gini index of 0 indicates complete dispersion. We recommend further investigation of any taxonomic node of interest with a per-read k-mer Gini index that is substantially larger than the others in your data, especially across samples, with 0.3 as a rough suggested cutoff.
+
+Full explanation of the output stats file columns:
+
 - **TaxNodeID**: The tax node ID from the lca file.
 - **TaxName**: The tax name from the lca file.
 - **TotalReads**: The number of reads assigned to that node or underneath.
-- **PMDsover2**: The proportion of reads assigned to that node or underneath with mean PMD scores over 2 (where the mean is over the alignments of that read, since a PMD score is computed per alignment).
-- **PMDSover4**: The proportion of reads assigned to that node or underneath with mean PMD scores over 4.
 - **ND+1**: Normalized damage +1: The proportion of reads assigned to that node or underneath with a C->T on the 5' (+1) position, minus the mean (non C>T or G>A) divergence for that node.
 - **ND-1**: Normalized damage -1: The proportion of reads assigned to that node or underneath with a C->T if single stranded, or a G->A if double stranded, on the 3' (-1) position, minus the mean (non C>T or G>A) divergence for that node.
-- **TotalAlignments**: Sum of the number of alignments for all the reads assigned to that node or underneath.
+- **UniqueKmers**: The number of unique k-mers in the reads assigned to that node or underneath.
+- **Duplicity**: The average number of times a k-mer has been seen, where the k-mers are from reads assigned to that node or underneath.
 - **MeanLength**: The mean length of the reads assigned to that node or underneath.
 - **Div**: The mean divergence for that node, not including any C>T or G>A transitions.
 - **ANI**: Average nucleotide identity of the reads assigned to that node or underneath. 
-- **PerReadKmerGI**: Mean k-mer based Gini index, where the mean is over the reads assigned to that node or underneath. This is like a per-read complexity metric (are there many of the same k-mers in each read?). Ranges from 0 to 1. Lower numbers are better. If this number is substantially bigger for a node of interest than others, consider looking more carefully at the actual reads mapping to that node.
-- **ReadSetKmerGI**: Read-set k-mer based Gini Index. This is like a per-read-set complexity metric (do the k-mers in all of these reads look like each other?). Ranges from 0 to 1. Lower numbers are better. If this number is substantially bigger for a node of interest than others, consider looking more carefully at the actual reads mapping to that node.
+- **PerReadKmerGI**: Mean k-mer based Gini index, where the mean is over the reads assigned to that node or underneath. 
 - **AvgGC**: Average GC content of the reads assigned to that node or underneath.
-- **Damaged+1**: The raw proportion of reads assigned to that node or underneath where every alignment of that read had a C->T on the 5' (+1) position.
-- **Damaged-1**: The raw proportion of reads assigned to that node or underneath where every alignment of that read had a C->T if single stranded, or a G->A if double stranded, on the 3' (-1) position.
+- **Damaged+1**: The actual proportion of reads assigned to that node or underneath where every alignment of that read had a C->T on the 5' (+1) position.
+- **Damaged-1**: The actual proportion of reads assigned to that node or underneath where every alignment of that read had a C->T if single stranded, or a G->A if double stranded, on the 3' (-1) position.
+- **TotalAlignments**: Sum of the number of alignments for all the reads assigned to that node or underneath.
 - **taxpath**: The taxonomic path from the lca file.
 
-In all cases where it is unclear, each read (not each alignment) is weighted equally.
+If the input bam file was annotated with PMD scores, the stats file will also contain columns **PMDSOver2** and **PMDSOver4**, indicating the proportion of PMD scores over 2 and 4 respectively. PMD scores are from [Skoglund et al. 2014](https://doi.org/10.1073/pnas.131893411). 
 
-You will notice your new shorter bam file is also annotated with PMD scores. A PMD score is calculated per alignment, and it tells you the log likelihood ratio of your read alignment being ancient over not. So, PMD = 2 is like "this read is double as likely to be ancient than it is modern". PMD scores are from [Skoglund et al. 2014](https://doi.org/10.1073/pnas.131893411) - have a look at the first figure to understand them a bit better. The parameters of the PMD score calculation are in the Python script, not user changeable other than editing the code, and I haven't played around with them yet. So it might change a bit at some point, but I think they are sufficiently reliable already for evaluating damage when combined with the other damage metrics.
+In all cases unless otherwise specified, each read (not each alignment) is weighted equally.
 
-## Accessory scripts
+### Accessory scripts: bamdam extract, plotdamage and plotbaminfo
 
-### Damage plotting script
-
-If you want to look at the damage smiley plot of a specific taxa, there is also an R script PlotDamage.R that works from the command line. It reads in the subs file written by BamDam.py, and needs to know a tax id (ideally) or a unique tax name (less ideally). You can find the relevant tax id by grep-ing the tax name in the lca file. 
-
-Usage: 
-```sh
-./PlotDamage.R [options]
-Options:
-        -f CHARACTER, --subs_file=CHARACTER
-                Path to the substitutions file (required)
-        -t CHARACTER, --tax=CHARACTER
-                Tax name or id. Accepts (unique) tax names in theory, but it is much safer to use tax ids. (required)
-        -s CHARACTER, --stranded=CHARACTER
-                ds for double stranded or ss for single stranded. (required)
-        -o CHARACTER, --output_plot=CHARACTER
-                Output file for the plot ending in .png or .pdf (required)
-        -h, --help
-                Show this help message and exit
-```
-Usage example:
-```sh
-./PlotDamage.R -f subs.txt -t 48230 -s ds -o dryas.png
-```
-
-Example double-stranded plot (this one has a lot of reads contributing to it, they will generally be noisier):
-
-<img src="https://github.com/bdesanctis/bamdam/blob/main/dryas.png" width="600">
-
-### Script to extract reads
-
-This is just like a fancy grep command. You could write a bash command to do the same thing, but it would probably be slower. This script leverages the fact that the lca and bam files are in the same order. Just like grep, you can use the full tax identifier, e.g. "48230:Dryas:genus", to be totally sure things will work correctly.
-
-Usage:
-```sh
-extractreads.py [-h] --in_lca IN_LCA --in_bam IN_BAM --out_bam OUT_BAM --keyword KEYWORD
-options:
-  -h, --help         show this help message and exit
-  --in_lca IN_LCA    Path to the (sorted) LCA file
-  --in_bam IN_BAM    Path to the (sorted) BAM file
-  --out_bam OUT_BAM  Path to the filtered BAM file
-  --keyword KEYWORD  Keyword or phrase to filter for
-```
-
-Usage example:
-```sh
-python extractreads.py --in_lca in.lca --in_bam in.bam --keyword "Salix" --out_bam onlysalix.bam
-```
-
-### PMD distribution plotting script
-
-This is a very basic histogram plotting wrapper. Once you've extracted a bam file of reads associated to a specific node, you can plot its PMD score distribution. In theory you could also use this script to plot PMD scores for the entire bam if you'd like, but it would be slow and might crash if the bam is too big. The following will extract all PMD scores from a bam file, feed them into a basic R histogram plotting script, and save the histogram to "salixPMDs.png" with the title "Salix PMD scores":
-
-```sh
-samtools view onlysalix.bam | grep -o 'DS:Z:[^ ]*' | sed 's/DS:Z://' | ./PlotPMD.R -o salixpmds.png -t "Salix"
-```
-
-## Coming soon
-Aka my to do list, suggestions welcome. I intend to do most if not all of the below in the next 2-3 months:
-- [priority] make it so the new bam also has a shorter header, right now it is just copying the old header and that is mildly ridiculous
-- evenness of coverage, probably immediately after shortening the bam + lca
-- split functions to shorten and compute stats into two i think
-- write another simple plotting function for read length distribution for a specific taxa
-- are more strands ending in purines (A vs G) than anything else? could check this eg https://www.pnas.org/doi/abs/10.1073/pnas.0704665104 
-- derive a kmer distribution from the modern reads, and remove reads with many of those kmers from ancient samples, maybe once you're already on the bams so you can see what you're removing, could do this simultaneously with evenness of coverage
-- eventually - null damage distribution?
-- add some example data
-- implement some functionality for combining samples , eg. multi-sample damage plots
-- clarify kmer metrics
-- clarify y axis on damage plots is prop of reads not prop of subs
-- make minsim params match ngslca ones , -editdistmin -editdistmax -simscorelow and -simscorehigh
-- make extractreads.py work on fqs too
-- larger-picture workflow including remove unnecessary headers and a bwa modification/little script for multimapping (maybe a separate repo for a bwa fork though)
-- add a root line to the end of the subs file for quick whole-library damage assessment
-- normalized c>t on +1, -1 minus c>t in the middle eg [+10,-10]
-- conditional damage metric? prop of reads with c>t on 5' that also have g>a on 3'. this is a leipzig thing
-- write a function to combine multi sample subs+stats files
-- multi sample damage plots
+To do :)
 
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.
