@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# Written by Bianca De Sanctis, bddesanctis@gmail.com
+# Simple bash wrapper to remove unmapped headers from a BAM file. Writes and deletes a temp file in the working directory. Also removes pre-existing @PG headers by default.
+# Usage: ./removeunmappedheaders in.bam out.bam
+
+### Edit this line to specify samtools location.
+samtools=$(which samtools)
+
+### Edit this line to remove all pre-existing @PG headers or not
+strip_PG_headers=True
+
+
+# initialize
+if [ "$#" -ne 2 ]; then
+    echo "Usage: $0 <in.bam> <out.bam>"
+    exit 1
+fi
+if [ -z "$samtools" ]; then
+    echo "Error: samtools not found. Please put samtools in your $PATH or edit this code directly to specify its location."
+    exit 1
+fi
+input_bam="$1"
+output_bam="$2"
+tmp_refs_file="$output_bam.refs.tmp"
+
+# write a temp ref file
+$samtools view "$input_bam" | cut -f 3 | sort | uniq > "$tmp_refs_file"
+
+# process; there are less complicated ways to do this, but this is the fastest implementation i've tried
+{
+    $samtools view -H "$input_bam" | awk -v ref_file="$tmp_refs_file" -v strip_pg="$strip_PG_headers" '
+    BEGIN {
+        while ((getline line < ref_file) > 0) {
+            ref_lookup[line] = 1;
+        }
+        close(ref_file);
+    }
+    /^@HD/ { print; next }
+    /^@PG/ { if (strip_pg == "True") next; else print; }
+    /^@SQ/ {
+        split($2, arr, ":");
+        ref_name = arr[2];
+        if (ref_lookup[ref_name]) {
+            print;
+        }
+    }
+    /^@CO/ { print; next }
+    /^@RG/ { print; next }
+    '
+    $samtools view "$input_bam"
+} | $samtools view -bo "$output_bam" -
+
+rm "$tmp_refs_file"
