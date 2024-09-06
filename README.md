@@ -1,13 +1,14 @@
 ## <a name="quickstart"></a>Quick start
 
 ```
-# install dependencies
-pip install pysam hyperloglog matplotlib tqdm  # tqdm is not strictly necessary and matplotlib is only needed for plotting
+# install dependencies (tqdm is not strictly necessary)
+pip install pysam hyperloglog matplotlib tqdm  
 
 # install bamdam
 git clone https://github.com/bdesanctis/bamdam.git
 cd bamdam
 chmod +x bamdam
+
 # help
 ./bamdam -h
 ./bamdam shrink -h 
