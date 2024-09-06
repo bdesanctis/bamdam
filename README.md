@@ -65,7 +65,9 @@ options:
   --annotate_pmd        Annotate output bam file with PMD tags (default: not set)
 ```
 
-Bamdam shrink will first subset your lca file to include only nodes which: ((are at or below your tax threshold) AND which meet your minimum read count), OR (are below a node which meets the former criteria). You can disable the last condition with --exclude_under. You may optionally give it a list OR file of tax identifiers to exclude (e.g., taxa identified in your control samples). For exclusions, you can give it tax IDs, full tax names, or full tax entries; e.g. Homonidae, "Homo sapiens", 4919, etc, but best practice is to use full tax strings like "4919:Homo sapiens:species". You can also filter the input lca file yourself beforehand, as long as the original order and format is preserved.
+Bamdam shrink will first subset your lca file to include only nodes which: ((are at or below your tax threshold) AND which meet your minimum read count), OR (are below a node which meets the former criteria). You can disable the last condition with --exclude_under. You may optionally give it a list OR file of tax identifiers to exclude (e.g., taxa identified in your control samples). For exclusions, you can give it tax IDs, full tax names, or full tax entries; e.g. Homonidae, "Homo sapiens", 4919, etc, but best practice is to use full tax strings like "4919:Homo sapiens:species". You can also filter the input lca file yourself beforehand, as long as the original order and format is preserved. To disable all internal filters, if you have already filtered the input lca file yourself, use 
+
+```./bamdam shrink --mincount 0 --upto root --minsim 0```
 
 Once the new lca file is written, bamdam shrink will subset the bam file to include only reads which appear in the newly shortened LCA file, and only alignments of those reads which meet the minimum similarity cutoff. 
 
