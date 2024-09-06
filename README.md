@@ -8,6 +8,9 @@ pip install pysam hyperloglog matplotlib tqdm  # tqdm is not strictly necessary
 git clone https://github.com/bdesanctis/bamdam.git
 cd bamdam
 chmod +x bamdam
+# help
+./bamdam -h
+./bamdam shrink -h 
 
 # run
 ./bamdam shrink --in_bam A.bam --in_lca A.lca --out_bam A2.bam --out_lca A2.lca --stranded ds  # (ds = double stranded library prep)
