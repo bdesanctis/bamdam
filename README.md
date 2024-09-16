@@ -124,7 +124,7 @@ In all cases unless otherwise specified, each read (not each alignment) is weigh
 A straightforward bash wrapper function to extract reads assigned to a specific taxonomic node from a bam file. Output is another bam file. Not very fast (bam i/o is slow).
 
 ```
-./bamdam extract --in_bam A2.bam --in_lca A2.lca --keyword "Mammuthus" --out_bam A2mammuthus.bam
+./bamdam extract --in_bam A2.bam --in_lca A2.lca --keyword "3318" --out_bam A_pinaceae.bam
 ```
 
 ### <a name="plotdamage"></a>bamdam plotdamage
@@ -132,17 +132,26 @@ A straightforward bash wrapper function to extract reads assigned to a specific 
 Plots a postmortem damage "smiley" plot using the subs file produced from bamdam compute. Fast.
 
 ```
-./bamdam plotdamage --in_subs A.subs.txt --tax "37348" --outplot A_mammuthus_damage_plot.png
+./bamdam plotdamage --in_subs A_subs.txt --tax "3318" --outplot A_3318_damage_plot.png
 ```
+
+Example output:
+<p align="center">
+<img src="example/pinaceae_damage.png" width="600">
+</p>
 
 ### <a name="plotbaminfo"></a>bamdam plotbaminfo
 
 Plots mismatch and read length distributions. Mostly intended to be used after bamdam extract. Not very fast for large input bam.
 
 ```
-./bamdam plotbaminfo --in_bam A2mammuthus.bam --outplot A_mammuthus_baminfo_plot.png
+./bamdam plotbaminfo --in_bam A_pinaceae.bam --outplot A_3318_baminfo.png
 ```
 
+Example output:
+<p align="center">
+<img src="example/pinaceae_baminfo.png" width="600">
+</p>
 
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.
