@@ -129,7 +129,7 @@ A straightforward bash wrapper function to extract reads assigned to a specific 
 
 ### <a name="plotdamage"></a>bamdam plotdamage
 
-Plots a postmortem damage "smiley" plot using the subs file produced from bamdam compute. Fast.
+Plots a postmortem damage "smiley" plot using the subs file produced from bamdam compute. Fast. Accepts tax IDs only.
 
 ```
 ./bamdam plotdamage --in_subs A_subs.txt --tax "3318" --outplot A_3318_damage_plot.png
