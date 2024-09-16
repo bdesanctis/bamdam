@@ -778,18 +778,19 @@ def parse_and_write_node_data(nodedata, stats_path, subs_path, stranded, pmds_in
     print("Wrote final stats and subs files. Done!")
 
 
-def extract_reads(in_lca, in_bam, out_bam, keyword):
+def extract_reads(in_lca, in_bam, out_bam, tax):
     # a very basic wrapper for grep / awk / samtools view.
     # writes a temp file with readnames, because that's what samtools view wants. 
     # actually i did try to do this more cleverly, using the known ordering of bam and lca, but it was slower.
+    tax_pattern = f"\\t{tax}:" if tax.isdigit() else tax
     tmp_file = f"{out_bam}.readnames.tmp"
     grep_command = (
-        f"grep {keyword} {in_lca} | awk -F'\\t' '{{print $1}}' "
+        f"grep '{tax_pattern}' {in_lca} | awk -F'\\t' '{{print $1}}' "
         f"| awk -F':' '{{for(i=1; i<=NF-3; i++) printf $i (i<NF-3 ? \":\" : \"\\n\")}}' > {tmp_file}"
     )
     result = subprocess.run(grep_command, shell=True)
     if result.returncode != 0:
-        print(f"No matches found for keyword: {keyword} or grep/awk command failed.")
+        print(f"No matches found for keyword: {tax} or grep/awk command failed.")
         return
     pysam.view("-N", tmp_file, "-b", in_bam, "-o", out_bam, catch_stdout=False)
     try:
