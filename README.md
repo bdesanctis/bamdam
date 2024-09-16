@@ -121,7 +121,7 @@ In all cases unless otherwise specified, each read (not each alignment) is weigh
 
 ### <a name="extract"></a>bamdam extract
 
-A straightforward bash wrapper function to extract reads assigned to a specific taxonomic node from a bam file. Output is another bam file. Not very fast (bam i/o is slow).
+A straightforward bash wrapper function to extract reads assigned to a specific taxonomic node from a bam file. Output is another bam file. Not very fast (bam i/o is slow). Accepts tax IDs (e.g. "3318") or full tax strings (e.g. "3318:Pinaceae:family").
 
 ```
 ./bamdam extract --in_bam A2.bam --in_lca A2.lca --keyword "3318" --out_bam A_pinaceae.bam
