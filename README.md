@@ -65,7 +65,13 @@ options:
   --annotate_pmd        Annotate output bam file with PMD tags (default: not set)
 ```
 
-Bamdam shrink will first subset your lca file to include only nodes which: ((are at or below your tax threshold) AND which meet your minimum read count), OR (are below a node which meets the former criteria). You can disable the last condition with --exclude_under. You may optionally give it a list OR file of tax identifiers to exclude (e.g., taxa identified in your control samples). For exclusions, you can give it tax IDs, full tax names, or full tax entries; e.g. Homonidae, "Homo sapiens", 4919, etc, but best practice is to use full tax strings like "4919:Homo sapiens:species". You can also filter the input lca file yourself beforehand, as long as the original order and format is preserved. To disable all internal filters, if you have already filtered the input lca file yourself, use 
+Bamdam shrink will first subset your lca file to include only nodes which: ((are at or below your tax threshold) AND which meet your minimum read count), OR (are below a node which meets the former criteria). You can disable the last condition with --exclude_under. You may optionally give it a list OR file of tax identifiers to exclude (e.g., taxa identified in your control samples). For exclusions, you can give it tax IDs, full tax names, or full tax entries; e.g. Homonidae, "Homo sapiens", 4919, etc, but best practice is to use full tax strings like "4919:Homo sapiens:species". You can also filter the input lca file yourself beforehand, as long as the original order and format is preserved. For example, you may wish to do something like 
+
+```grep "Eukaryot" A.lca > A_onlyeukaryots.lca```
+
+before running bamdam. 
+
+To disable all internal filters, if you have already fully filtered the input lca file yourself, use 
 
 ```./bamdam shrink --mincount 0 --upto root --minsim 0```
 
@@ -96,7 +102,7 @@ An important metric for ancient environmental DNA authentication is evenness of 
 
 Sometimes many low complexity reads will map to the same taxa, which can warrant further investigation. Bamdam measures the average read complexity per taxonomic node via a per-read k-mer [Gini index](https://en.wikipedia.org/wiki/Gini_coefficient), which is a dispersion metric. Consider for example the low complexity read "ACCTAACCTACCTACCTACCTACCTACCTCCTACCTACCTA", which contains the 5-mer ACCTA a total of 6 times, and so yields a high Gini index of 0.46 using the default k=5. On the other hand, a Gini index of 0 indicates complete dispersion. We recommend further investigation of any taxonomic node of interest with a per-read k-mer Gini index that is substantially larger than the others in your data, especially across samples, with 0.3 as a rough suggested cutoff.
 
-Full explanation of the output stats file columns:
+Full list of the output stats file columns:
 
 - **TaxNodeID**: The tax node ID from the lca file.
 - **TaxName**: The tax name from the lca file.
@@ -104,7 +110,7 @@ Full explanation of the output stats file columns:
 - **ND+1**: Normalized damage +1: The proportion of reads assigned to that node or underneath with a C->T on the 5' (+1) position, minus the mean (non C>T or G>A) divergence for that node.
 - **ND-1**: Normalized damage -1: The proportion of reads assigned to that node or underneath with a C->T if single stranded, or a G->A if double stranded, on the 3' (-1) position, minus the mean (non C>T or G>A) divergence for that node.
 - **UniqueKmers**: The number of unique k-mers in the reads assigned to that node or underneath.
-- **Duplicity**: The average number of times a k-mer has been seen, where the k-mers are from reads assigned to that node or underneath.
+- **Duplicity**: The average number of times a k-mer has been seen, where the k-mers are from reads assigned to that node or underneath. Should be close to 1 unless coverage is high.
 - **MeanLength**: The mean length of the reads assigned to that node or underneath.
 - **Div**: The mean divergence for that node, not including any C>T or G>A transitions.
 - **ANI**: Average nucleotide identity of the reads assigned to that node or underneath. 
