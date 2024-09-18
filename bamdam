@@ -1057,12 +1057,12 @@ def main():
     parser_plotbaminfo.add_argument("--outplot", type=str, default="baminfo_plot.png", help="Filename for the output plot, ending in .png or .pdf (default: baminfo_plot.png)")
     parser_plotbaminfo.set_defaults(func=plotbaminfo)
 
-    args = parser.parse_args()
-
-    if '--help' in sys.argv or '-h' in sys.argv:
+    if '--help' in sys.argv or '-h' in sys.argv or len(sys.argv) == 1:
         parser.print_help()
         sys.exit()
-    
+
+    args = parser.parse_args()
+
     # Validation checks
     if hasattr(args, 'stranded') and args.stranded not in ["ss", "ds"]:
         parser.error(f"Invalid value for stranded: {args.stranded}. Valid values are 'ss' or 'ds'.")
