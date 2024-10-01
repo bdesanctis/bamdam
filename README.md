@@ -15,7 +15,7 @@ chmod +x bamdam
 
 # run
 ./bamdam shrink --in_bam A.bam --in_lca A.lca --out_bam A2.bam --out_lca A2.lca --stranded ds  # (ds = double stranded library prep)
-./bamdam compute --in_bam A2.bam --in_lca A2.lca --out_stats A_stats.txt --out_subs A_subs.txt --stranded ds
+./bamdam compute --in_bam A2.bam --in_lca A2.lca --out_tsv A_tsv.txt --out_subs A_subs.txt --stranded ds
 ```
 
 ## Table of Contents
@@ -27,12 +27,13 @@ chmod +x bamdam
   - [extract](#extract)
   - [plotdamage](#plotdamage)
   - [plotbaminfo](#plotbaminfo)
+- [Tutorial](#tutorial)
 
 ## <a name="description"></a>Description
 
 Bamdam is a post-mapping toolkit for ancient environmental DNA capture or shotgun sequencing data, used after reads been mapped to a reference database and run through the least common ancestor algorithm [ngsLCA](https://github.com/miwipe/ngsLCA). The input to bamdam is a read-sorted bam (also required by ngsLCA) and the .lca file which is output by ngsLCA. 
 
-The main two functions are bamdam **shrink** and bamdam **compute**. When mapping against large reference databases, the output bam files will often be huge and contain mostly irrelevant alignments; the reads with the most alignments are usually those assigned to uninformative taxonomic nodes (e.g. "Viridiplantae:kingdom"). Bamdam shrink produces a much smaller bam (and associated lca file) which still contains all informative alignments. Bamdam compute then takes in a (shrunken) bam and lca file and produces a large stats table with one row per taxonomic node, including authentication metrics such as postmortem damage, k-mer duplicity, and much more. Users can then set their own filtering thresholds to decide which taxa look like real ancient taxa, rather than modern environmental, lab, or database contaminants. 
+The main two functions are bamdam **shrink** and bamdam **compute**. When mapping against large reference databases, the output bam files will often be huge and contain mostly irrelevant alignments; the reads with the most alignments are usually those assigned to uninformative taxonomic nodes (e.g. "Viridiplantae:kingdom"). Bamdam shrink produces a much smaller bam (and associated lca file) which still contains all informative alignments. Bamdam compute then takes in a (shrunken) bam and lca file and produces a large table in tsv format with one row per taxonomic node, including authentication metrics such as postmortem damage, k-mer duplicity, and much more. Users can then set their own filtering thresholds to decide which taxa look like real ancient taxa, rather than modern environmental, lab, or database contaminants. 
 
 There are also some accessory functions. Bamdam **extract** is a basic wrapper function that extracts reads assigned to a specific taxonomic node from a bam file into another bam file for downstream analyses. Bamdam **plotdamage** uses the subs file, a secondary output from bamdam compute, to quickly produce a postmortem damage "smiley" plot for a specified taxonomic node. Bamdam **plotbaminfo** takes a bam file as input (e.g. from bamdam extract), and plots the mismatch and read length distributions. Lastly, neither bamdam shrink nor extract remove unused reference lines from the bam header because it is not efficient to do this inside the main code, although it is a generally a good idea to do this at some point after mapping to a large database. We provide a short standalone samtools wrapper script **removeunmappedheaders** for this purpose. We recommend removing unmapped headers before running bamdam (e.g. immediately after mapping but before merging, if applicable), and potentially again after to fully minimize storage needs if needed.
 
@@ -56,24 +57,19 @@ options:
   --stranded STRANDED   Either ss for single stranded or ds for double stranded (required)
   --mincount MINCOUNT   Minimum read count to keep a node (default: 5)
   --upto UPTO           Keep nodes up to and including this tax threshold; use root to disable (default: family)
-  --minsim MINSIM       Minimum similarity to reference to keep an alignment (default: 0.9)
+  --minsim MINSIM       Minimum similarity to reference to keep an alignment; should match ngsLCA minsim value (default: 0.95)
   --exclude_keywords EXCLUDE_KEYWORDS [EXCLUDE_KEYWORDS ...]
                         Keyword(s) to exclude when filtering (default: none)
   --exclude_keyword_file EXCLUDE_KEYWORD_FILE
                         File of keywords to exclude when filtering, one per line (default: none)
-  --exclude_under       Do not keep nodes below criteria-meeting nodes unless they also meet criteria themselves (default: not set)
   --annotate_pmd        Annotate output bam file with PMD tags (default: not set)
 ```
 
-Bamdam shrink will first subset your lca file to include only nodes which: ((are at or below your tax threshold) AND which meet your minimum read count), OR (are below a node which meets the former criteria). You can disable the last condition with --exclude_under. You may optionally give it a list OR file of tax identifiers to exclude (e.g., taxa identified in your control samples). For exclusions, you can give it tax IDs, full tax names, or full tax entries; e.g. Homonidae, "Homo sapiens", 4919, etc, but best practice is to use full tax strings like "4919:Homo sapiens:species". You can also filter the input lca file yourself beforehand, as long as the original order and format is preserved. For example, you may wish to do something like 
+Bamdam shrink will first subset your lca file to include only nodes which: ((are at or below your tax threshold) AND which meet your minimum read count), OR (are below a node which meets the former criteria). You may optionally give it a list or file of tax identifiers to exclude (e.g., taxa identified in your control samples). For exclusions, you can give it tax IDs (e.g. 4919) or full tax strings (e.g. 4919:Homo sapiens:species). It will only exclude reads assigned to exactly those nodes you give it, not those above or below. You can also filter the input lca file yourself beforehand, as long as the original order and format is preserved. For example, you may wish to do something like 
 
 ```grep "Eukaryot" A.lca > A_onlyeukaryots.lca```
 
 before running bamdam. 
-
-To disable all internal filters, if you have already fully filtered the input lca file yourself, use 
-
-```./bamdam shrink --mincount 0 --upto root --minsim 0```
 
 Once the new lca file is written, bamdam shrink will subset the bam file to include only reads which appear in the newly shortened LCA file, and only alignments of those reads which meet the minimum similarity cutoff. 
 
@@ -81,16 +77,16 @@ Bamdam shrink will also optionally annotate the new bam file with PMD scores as 
 
 ### <a name="compute"></a>bamdam compute
 
-Input: Read-sorted bam and associated lca file. Output: Stats file and subs file.
+Input: Read-sorted bam and associated lca file. Output: Tsv file and subs file.
 
 ```
-usage: bamdam compute [-h] --in_bam IN_BAM --in_lca IN_LCA --out_stats OUT_STATS --out_subs OUT_SUBS --stranded STRANDED [--options]
+usage: bamdam compute [-h] --in_bam IN_BAM --in_lca IN_LCA --out_tsv OUT_TSV --out_subs OUT_SUBS --stranded STRANDED [--options]
 
 options:
   -h, --help            show this help message and exit
   --in_bam IN_BAM       Path to the BAM file (required)
   --in_lca IN_LCA       Path to the LCA file (required)
-  --out_stats OUT_STATS Path to the output stats file (required)
+  --out_tsv OUT_TSV Path to the output tsv file (required)
   --out_subs OUT_SUBS   Path to the output subs file (required)
   --stranded STRANDED   Either ss for single stranded or ds for double stranded (required)
   --kr KR               Value of k for per-read kmer complexity calculation (default: 5)
@@ -102,7 +98,7 @@ An important metric for ancient environmental DNA authentication is evenness of 
 
 Sometimes many low complexity reads will map to the same taxa, which can warrant further investigation. Bamdam measures the average read complexity per taxonomic node via a per-read k-mer [Gini index](https://en.wikipedia.org/wiki/Gini_coefficient), which is a dispersion metric. Consider for example the low complexity read "ACCTAACCTACCTACCTACCTACCTACCTCCTACCTACCTA", which contains the 5-mer ACCTA a total of 6 times, and so yields a high Gini index of 0.46 using the default k=5. On the other hand, a Gini index of 0 indicates complete dispersion. We recommend further investigation of any taxonomic node of interest with a per-read k-mer Gini index that is substantially larger than the others in your data, especially across samples, with 0.3 as a rough suggested cutoff.
 
-Full list of the output stats file columns:
+Full list of the output tsv columns:
 
 - **TaxNodeID**: The tax node ID from the lca file.
 - **TaxName**: The tax name from the lca file.
@@ -121,43 +117,70 @@ Full list of the output stats file columns:
 - **TotalAlignments**: Sum of the number of alignments for all the reads assigned to that node or underneath.
 - **taxpath**: The taxonomic path from the lca file.
 
-If the input bam file was annotated with PMD scores, the stats file will also contain columns **PMDSOver2** and **PMDSOver4**, indicating the proportion of PMD scores over 2 and 4 respectively. PMD scores are from [Skoglund et al. 2014](https://doi.org/10.1073/pnas.131893411). 
+If the input bam file was annotated with PMD scores, the tsv file will also contain columns **PMDSOver2** and **PMDSOver4**, indicating the proportion of PMD scores over 2 and 4 respectively. PMD scores are from [Skoglund et al. 2014](https://doi.org/10.1073/pnas.131893411). 
 
 In all cases unless otherwise specified, each read (not each alignment) is weighted equally.
 
 ### <a name="extract"></a>bamdam extract
 
-A straightforward bash wrapper function to extract reads assigned to a specific taxonomic node from a bam file. Output is another bam file. Not very fast (bam i/o is slow). Accepts tax IDs (e.g. "3318") or full tax strings (e.g. "3318:Pinaceae:family").
+A straightforward bash wrapper function to extract reads assigned to a specific taxonomic node from a bam file. Output is another bam file. Not very fast (bam i/o is slow). Accepts tax IDs or full tax strings.
 
 ```
-./bamdam extract --in_bam A2.bam --in_lca A2.lca --keyword "3318" --out_bam A_pinaceae.bam
+./bamdam extract --in_bam IN_BAM --in_lca IN_LCA --keyword KEYWORD --out_bam OUT_BAM
 ```
 
 ### <a name="plotdamage"></a>bamdam plotdamage
 
-Plots a postmortem damage "smiley" plot using the subs file produced from bamdam compute. Fast. Accepts tax IDs only.
+Plots a postmortem damage "smiley" plot using the subs file produced from bamdam compute. Fast. Accepts tax IDs only. Produces png or pdf.
 
 ```
-./bamdam plotdamage --in_subs A_subs.txt --tax "3318" --outplot A_3318_damage_plot.png
+./bamdam plotdamage --in_subs IN_SUBS --tax TAX --outplot OUTPLOT
 ```
 
 Example output:
 <p align="center">
-<img src="example/pinaceae_damage.png" width="600">
-</p>
+<img src="example/CGG3_Myrtoideae_damageplot.png" width="600">
 
 ### <a name="plotbaminfo"></a>bamdam plotbaminfo
 
-Plots mismatch and read length distributions. Mostly intended to be used after bamdam extract. Not very fast for large input bam.
+Plots mismatch and read length distributions. Mostly intended to be used after bamdam extract. Not very fast for large input bam. Produces png or pdf.
 
 ```
-./bamdam plotbaminfo --in_bam A_pinaceae.bam --outplot A_3318_baminfo.png
+./bamdam plotbaminfo --in_bam IN_BAM --outplot OUTPLOT
 ```
 
 Example output:
 <p align="center">
-<img src="example/pinaceae_baminfo.png" width="600">
+<img src="example/CGG3_Myrtoideae_baminfo.png" width="600">
 </p>
+
+## <a name="tutorial"></a>Tutorial
+
+We will analyze a small portion of an unpublished sedaDNA sample from China, prepared with double stranded library prep. It may take a few minutes to download files.
+```
+wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/CGG3_015421.lca
+wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/CGG3_015421.sub_sorted.bam
+```
+
+Running the main bamdam commands may take another few minutes.
+```
+bamdam shrink --in_bam CGG3_015421.sub_sorted.bam --in_lca CGG3_015421.lca --out_bam CGG3.small.bam --out_lca CGG3.small.lca --stranded ds
+bamdam compute --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_tsv CGG3.tsv --out_subs CGG3.subs.txt --stranded ds
+```
+Now you can look at your output files and see what's in there.
+```
+head CGG3.tsv
+```
+Looks like the top hit is the plant subfamily Myrtoideae, with tax ID 1699513. This looks real and ancient: k-mer duplicity close to 1, high amounts of damage on both ends, sufficiently low k-mer gini, short read length, etc. Next let's plot damage for this taxa.
+```
+bamdam plotdamage --in_subs CGG3.subs.txt --tax 1699513 --outplot CGG3_Myrtoidae_damageplot.png
+```
+Lastly let's pull out the associated reads, and plot the mismatch and read length distributions.
+```
+bamdam extract --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_bam CGG3.Myrtoideae.bam --keyword 1699513
+bamdam plotbaminfo --in_bam CGG3.Myrtoideae.bam --outplot CGG3_Myrtoideae_baminfo.png
+```
+Your plots should match those shown as examples above in this github repo. 
 
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.
