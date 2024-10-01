@@ -167,7 +167,7 @@ Running the main bamdam commands may take another few minutes.
 bamdam shrink --in_bam CGG3_015421.sub_sorted.bam --in_lca CGG3_015421.lca --out_bam CGG3.small.bam --out_lca CGG3.small.lca --stranded ds
 bamdam compute --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_tsv CGG3.tsv --out_subs CGG3.subs.txt --stranded ds
 ```
-Now you can look at your output files and see what's in there.
+Now you can look at your output files and see what's in there. The tsv is ordered by read count.
 ```
 head CGG3.tsv
 ```
