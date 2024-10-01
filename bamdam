@@ -22,7 +22,6 @@ try: # optional library for progress bars
 except ImportError:
     tqdm_imported = False
 
-
 def get_sorting_order(file_path):
     # this is the fastest way to check if HD is the first line of the header
     # a bam is basically a gzipped sam; take advantage of this so we don't have to read in the full header just for this check (pysam can't stream it)
@@ -555,7 +554,7 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kr, kn, upto,stranded):
 
             if oldreadname != lcareadname:
                 print("Warning: There is a mismatch between your lca and bam files at read " + oldreadname + " in the bam and " + lcareadname + " in the lca. ")
-                print("This mismatch could have some bad downstream implications, and it would be best to find out what's causing it, fix it, and re-run. Perhaps you have some reads in one file but not in the other? \n")
+                print("This mismatch could have some bad downstream implications, and it would be best to find out what's causing it, fix it, and re-run. Perhaps you have some reads in one file but not in the other. For example, this could be caused by accidentally choosing different minimum similarity cutoffs in ngsLCA and bamdam. \n")
                 break
 
             # now update everything to all the relevant nodes
@@ -1047,7 +1046,7 @@ def main():
     parser_shrink.add_argument("--stranded", type=str, required=True, help="Either ss for single stranded or ds for double stranded (required)")
     parser_shrink.add_argument("--mincount", type=int, default=5, help="Minimum read count to keep a node (default: 5)")
     parser_shrink.add_argument("--upto", type=str, default="family", help="Keep nodes up to and including this tax threshold; use root to disable (default: family)")
-    parser_shrink.add_argument("--minsim", type=float, default=0.9, help="Minimum similarity to reference to keep an alignment (default: 0.9)")
+    parser_shrink.add_argument("--minsim", type=float, default=0.95, help="Minimum similarity to reference to keep an alignment; should match ngsLCA minsim value (default: 0.95)")
     parser_shrink.add_argument("--exclude_keywords", type=str, nargs='+', default=[], help="Keyword(s) to exclude when filtering (default: none)")
     parser_shrink.add_argument("--exclude_keyword_file", type=str, default=None, help="File of keywords to exclude when filtering, one per line (default: none)")
     parser_shrink.add_argument("--annotate_pmd", action='store_true', help="Annotate output bam file with PMD tags  (default: not set)")
@@ -1086,6 +1085,10 @@ def main():
     parser_plotbaminfo.add_argument("--outplot", type=str, default="baminfo_plot.png", help="Filename for the output plot, ending in .png or .pdf (default: baminfo_plot.png)")
     parser_plotbaminfo.set_defaults(func=plotbaminfo)
 
+    if len(sys.argv) == 1:
+        parser.print_help()
+        sys.exit()
+
     args = parser.parse_args()
 
     if '--help' in sys.argv or '-h' in sys.argv or len(sys.argv) == 1:
@@ -1094,7 +1097,7 @@ def main():
     
     # Validation checks
     if hasattr(args, 'stranded') and args.stranded not in ["ss", "ds"]:
-        parser.error(f"Invalid value for stranded: {args.stranded}. Valid values are 'ss' or 'ds'.")
+        parser.error(f"Invalid value for stranded: {args.stranded}. Valid values are ss or ds.")
     if hasattr(args, 'mincount') and not isinstance(args.mincount, int):
         parser.error(f"Invalid integer value for mincount: {args.mincount}")
     if hasattr(args, 'kr') and (not isinstance(args.kr, int) or not isinstance(args.kr, int) or args.kr > 30):
