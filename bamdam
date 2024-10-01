@@ -22,6 +22,7 @@ try: # optional library for progress bars
 except ImportError:
     tqdm_imported = False
 
+
 def get_sorting_order(file_path):
     # this is the fastest way to check if HD is the first line of the header
     # a bam is basically a gzipped sam; take advantage of this so we don't have to read in the full header just for this check (pysam can't stream it)
@@ -44,14 +45,14 @@ def get_sorting_order(file_path):
     process.terminate()
     # here is a slower version, try this if HD line is not at the top
     try:
-        with pysam.AlignmentFile(file_path, "rb") as bamfile:
+        with pysam.AlignmentFile(file_path, "rb",require_index=False) as bamfile:
             hdline = bamfile.header.get('HD', {})
             sorting_order = hdline.get('SO', 'unknown')
             return sorting_order
     except:
         return "unknown"
 
-def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_keywords, exclude_under):
+def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_keywords): # exclude_under
 
     print("\nWriting a filtered lca file...")
 
@@ -70,26 +71,26 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
             next(file) 
         for line in file:
             if upto in line:
-                if exclude_under and any(keyword in line for keyword in exclude_keywords): # checks all nodes in the path 
-                    continue
+                # if exclude_under and any(keyword in line for keyword in exclude_keywords): # checks all nodes in the path 
+                #     continue
                     # if you want to exclude all nodes underneath the ones you specified too, all you have to do is look for all the keywords in every line 
-                else:
-                    entry = line.strip().split('\t')
-                    if len(entry) > 1:  
-                        fields = entry[1:] # can ditch the read id 
-                        if (not exclude_under) and any(keyword in fields[0] for keyword in exclude_keywords):
-                            continue # this only checks the node the read is actually assigned to 
-                        else:
-                            keepgoing = True; field = 0
-                            while keepgoing:
-                                taxid = fields[field].split(':')[0]
-                                if taxid in number_counts:
-                                    number_counts[taxid] += 1
-                                else:
-                                    number_counts[taxid] = 1
-                                if upto in fields[field]:
-                                    keepgoing = False
-                                field +=1 
+                # else: 
+                entry = line.strip().split('\t')
+                if len(entry) > 1:  
+                    fields = entry[1:] # can ditch the read id 
+                    if exclude_keywords and any(keyword in fields[0] for keyword in exclude_keywords):
+                        continue # this only checks the node the read is actually assigned to 
+                    else:
+                        keepgoing = True; field = 0
+                        while keepgoing:
+                            taxid = fields[field].split(':')[0]
+                            if taxid in number_counts:
+                                number_counts[taxid] += 1
+                            else:
+                                number_counts[taxid] = 1
+                            if upto in fields[field]:
+                                keepgoing = False
+                            field +=1 
 
     goodnodes = [key for key, count in number_counts.items() if count >= mincount]
     # these are the nodes that have at least the min count of reads assigned to them (or below them), and which are at most upto
@@ -98,7 +99,7 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
     oldreadname = ""
     with open(original_lca_path, 'r') as infile, open(short_lca_path, 'w') as outfile:
             for _ in range(lcaheaderlines):
-                next(infile) # assumes it has the usual 2 comment lines at the top from ngslca
+                next(infile) 
             for line in infile:
                 tab_split = line.find('\t')
                 newreadname = line[:tab_split].rsplit(':', 3)[0]
@@ -107,10 +108,8 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
                     exit(-1)
                 if upto in line:
                     # you can just go straight to the upto level and check if that node has high enough count 
-                    if exclude_under and any(keyword in line for keyword in exclude_keywords):
-                        continue # don't keep the ones that have the keywords anywhere if exclude_under is true
-                    elif (not exclude_under) and any(keyword in entry[1] for keyword in exclude_keywords):
-                        continue # don't keep the ones that have the keywords in their assignment if exclude_under is false
+                    if exclude_keywords and any(keyword in entry[1] for keyword in exclude_keywords):
+                        continue # don't keep the ones that have the keywords in their exact assignment 
                     else:
                         entry = line.strip().split('\t')
                         for field in entry[1:]:
@@ -497,7 +496,7 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kr, kn, upto,stranded):
 
     # initialize 
     node_data = {}
-    bamfile = pysam.AlignmentFile(bamfile_path, "rb") 
+    bamfile = pysam.AlignmentFile(bamfile_path, "rb",require_index=False) 
     lcafile = open(lcafile_path, 'r')
     oldreadname = ""
     oldmd = ""
@@ -585,7 +584,7 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kr, kn, upto,stranded):
                 ctm1 = currentsubdict.get("['C', 'T', -1]", 0) # c -> t on the pos 1 
                 gam1 = currentsubdict.get("['G', 'A', -1]", 0) # c -> t on the pos 1 
                 # ok, so on joshua kapp's suggestion, i used to only add to dp1 and dm1 if all the alignments for that read had a c>t, which does make sense.
-                # but then it doesn't match the damage plots and that bugs me to no end, so i went back to adding the proportion of reads which had a c>t.
+                # but then it doesn't match the damage plots and that bugs me a lot, so i went back to adding the proportion of reads which had a c>t.
                 # an if ctp1 == num_alignments:  will do it josh's way 
                 node_data[node]['dp1'] = ((node_data[node]['dp1'] * node_data[node]['total_reads']) + (ctp1/num_alignments) ) / (node_data[node]['total_reads'] + 1)
                 if stranded == "ss":
@@ -705,10 +704,10 @@ def format_subs(subs, nreads):
     return " ".join(sub[1] for sub in formatted_subs)
 
 
-def parse_and_write_node_data(nodedata, stats_path, subs_path, stranded, pmds_in_bam):
-    # parses a dictionary where keys are node tax ids, and entries are total_reads, meanlength, total_alignments, etc
+def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_bam):
+    # parses a dictionary where keys are node tax ids, and entries are total_reads, meanlength, total_alignments, etc 
 
-    statsfile = open(stats_path, 'w', newline='')
+    statsfile = open(tsv_path, 'w', newline='')
     subsfile = open(subs_path, 'w', newline='')
     if pmds_in_bam:
         header = ['TaxNodeID', 'TaxName', 'TotalReads', 'ND+1', 'ND-1', 'UniqueKmers', 'Duplicity', 
@@ -775,7 +774,7 @@ def parse_and_write_node_data(nodedata, stats_path, subs_path, stranded, pmds_in
     statsfile.close()
     subsfile.close()
 
-    print("Wrote final stats and subs files. Done!")
+    print("Wrote final tsv and subs files. Done!")
 
 
 def extract_reads(in_lca, in_bam, out_bam, tax):
@@ -813,7 +812,7 @@ def make_damage_plot(subs,tax,plotfile):
     matched_line = [line for line in file_content if re.match(tax_pattern, line)]
 
     if len(matched_line) == 0:
-        matched_line = [line for line in file_content if tax.lower() in line.lower()]  # capitalization error?
+        matched_line = [line for line in file_content if tax.lower() in line.lower()]  # check for capitalization error
         if len(matched_line) == 1:
             taxstring = matched_line[0].split('\t')[:2]
             print(f"There was no exact match for your input tax string in the subs file, but a close match was found and will be used: {taxstring}")
@@ -888,7 +887,7 @@ def make_baminfo_plot(in_bam, plotfile):
         print(f"Error: Cannot find matplotlib library for plotting. Try: pip install matplotlib")
         return
 
-    bamfile = pysam.AlignmentFile(in_bam, "rb")
+    bamfile = pysam.AlignmentFile(in_bam, "rb",require_index=False)
     
     mismatch_counts = {}  
     read_length_counts = {}  
@@ -983,13 +982,44 @@ def make_baminfo_plot(in_bam, plotfile):
 
     plt.close()
 
+
+def parse_exclude_keywords(args):
+    if hasattr(args, 'exclude_keywords') or hasattr(args, 'exclude_keyword_file'):
+        if args.exclude_keywords and args.exclude_keyword_file:
+            raise ValueError("Please only provide one of --exclude_keywords or --exclude_keyword_file, not both.")
+        
+        exclude_keywords = args.exclude_keywords if args.exclude_keywords else []
+        if not isinstance(exclude_keywords, list):
+            exclude_keywords = [exclude_keywords]
+        
+        if args.exclude_keyword_file:
+            if not os.path.exists(args.exclude_keyword_file):
+                raise FileNotFoundError(f"exclude_keyword_file path does not exist: {args.exclude_keyword_file}")
+            with open(args.exclude_keyword_file, 'r') as f:
+                exclude_keywords.extend([line.strip() for line in f if line.strip()])
+        
+        formatted_keywords = []
+        # good to surround the digit-only tax ids with a tab and a :, so we don't accidentally hit substring tax ids
+        for keyword in exclude_keywords:
+            if keyword.isdigit():
+                keyword = f"\\t{keyword}:"
+            formatted_keywords.append(keyword)
+
+        formatted_keywords = [kw.lstrip("'").lstrip('"').rstrip("'").rstrip('"') for kw in formatted_keywords]
+        
+        return formatted_keywords
+    else:
+        return []
+    
+
 def shrink(args):
-    shortlcalines = write_shortened_lca(args.in_lca, args.out_lca, args.upto, args.mincount, args.exclude_keywords, args.exclude_under)
+    formatted_exclude_keywords = parse_exclude_keywords(args)
+    shortlcalines = write_shortened_lca(args.in_lca, args.out_lca, args.upto, args.mincount, formatted_exclude_keywords)
     write_shortened_bam(args.in_bam, args.out_lca, args.out_bam, args.stranded, args.minsim, args.annotate_pmd, shortlcalines)
 
 def compute(args):
     nodedata, pmds_in_bam = gather_subs_and_kmers(args.in_bam, args.in_lca, kr=args.kr, kn=args.kn, upto=args.upto, stranded=args.stranded)
-    parse_and_write_node_data(nodedata, args.out_stats, args.out_subs, args.stranded, pmds_in_bam)  
+    parse_and_write_node_data(nodedata, args.out_tsv, args.out_subs, args.stranded, pmds_in_bam)  
 
 def extract(args):
     extract_reads(args.in_lca, args.in_bam, args.out_bam, args.keyword)
@@ -1020,15 +1050,14 @@ def main():
     parser_shrink.add_argument("--minsim", type=float, default=0.9, help="Minimum similarity to reference to keep an alignment (default: 0.9)")
     parser_shrink.add_argument("--exclude_keywords", type=str, nargs='+', default=[], help="Keyword(s) to exclude when filtering (default: none)")
     parser_shrink.add_argument("--exclude_keyword_file", type=str, default=None, help="File of keywords to exclude when filtering, one per line (default: none)")
-    parser_shrink.add_argument("--exclude_under", action='store_true', help="Do not keep nodes below criteria-meeting nodes unless they also meet criteria themselves (default: not set)")
     parser_shrink.add_argument("--annotate_pmd", action='store_true', help="Annotate output bam file with PMD tags  (default: not set)")
     parser_shrink.set_defaults(func=shrink) 
 
     # Compute
-    parser_compute = subparsers.add_parser('compute', help="Compute subs and stats files.")
+    parser_compute = subparsers.add_parser('compute', help="Compute tsv and subs files.")
     parser_compute.add_argument("--in_bam", type=str, required=True, help="Path to the BAM file (required)")
     parser_compute.add_argument("--in_lca", type=str, required=True, help="Path to the LCA file (required)")
-    parser_compute.add_argument("--out_stats", type=str, required=True, help="Path to the output stats file (required)")
+    parser_compute.add_argument("--out_tsv", type=str, required=True, help="Path to the output tsv file (required)")
     parser_compute.add_argument("--out_subs", type=str, required=True, help="Path to the output subs file (required)")
     parser_compute.add_argument("--stranded", type=str, required=True, help="Either ss for single stranded or ds for double stranded (required)")
     parser_compute.add_argument("--kn", type=int, default=29, help="Value of k for per-node counts of unique k-mers and duplicity (default: 29)")
@@ -1057,16 +1086,12 @@ def main():
     parser_plotbaminfo.add_argument("--outplot", type=str, default="baminfo_plot.png", help="Filename for the output plot, ending in .png or .pdf (default: baminfo_plot.png)")
     parser_plotbaminfo.set_defaults(func=plotbaminfo)
 
-    if len(sys.argv)==1:
-        parser.print_help()
-        sys.exit(1)
-
     args = parser.parse_args()
 
-    if args.command == None:
+    if '--help' in sys.argv or '-h' in sys.argv or len(sys.argv) == 1:
         parser.print_help()
-        sys.exit(1)
-
+        sys.exit()
+    
     # Validation checks
     if hasattr(args, 'stranded') and args.stranded not in ["ss", "ds"]:
         parser.error(f"Invalid value for stranded: {args.stranded}. Valid values are 'ss' or 'ds'.")
@@ -1096,19 +1121,6 @@ def main():
             print("Error: Your bam file does not appear to be read-sorted. Please try again with it once it has been read-sorted (samtools sort -n), which should be the same order as your lca file. \n")
             exit(-1) # remove this line to force continue
 
-    # deal with exclude keywords
-    if hasattr(args, 'exclude_keywords') or hasattr(args, 'exclude_keyword_file'):
-        if args.exclude_keywords and args.exclude_keyword_file:
-            parser.error("Please only provide one of --exclude_keywords or --exclude_keyword_file, not both.")
-        exclude_keywords = args.exclude_keywords
-        if type(exclude_keywords) != type([]):
-            exclude_keywords = [exclude_keywords]
-        if args.exclude_keyword_file:
-            if not os.path.exists(args.exclude_keyword_file):
-                parser.error(f"Exclude keyword file path does not exist: {args.exclude_keyword_file}")
-            with open(args.exclude_keyword_file, 'r') as f: # remove quotation marks if they're in the file 
-                exclude_keywords.extend([line.strip().strip('"').strip("'") for line in f if line.strip()])
-    
     if args.command == 'shrink':
         print("Hello! You are running bamdam shrink with the following arguments:")
         print(f"in_lca: {args.in_lca}")
@@ -1123,8 +1135,8 @@ def main():
             print(f"exclude_keywords: loaded from {args.exclude_keyword_file}")
         if hasattr(args, 'exclude_keywords') and args.exclude_keywords:
             print(f"exclude_keywords: {args.exclude_keywords}")
-        if hasattr(args, 'exclude_keyword_file') or hasattr(args, 'exclude_keywords'):
-            print(f"exclude_under: {args.exclude_under}")
+        # if hasattr(args, 'exclude_keyword_file') or hasattr(args, 'exclude_keywords'):
+        #     print(f"exclude_under: {args.exclude_under}")
         if hasattr(args, 'annotate_pmd') and args.annotate_pmd:
             print(f"annotate_pmd: {args.annotate_pmd}")
 
@@ -1132,7 +1144,7 @@ def main():
         print("Hello! You are running bamdam compute with the following arguments:")
         print(f"in_bam: {args.in_bam}")
         print(f"in_lca: {args.in_lca}")
-        print(f"out_stats: {args.out_stats}")
+        print(f"out_tsv: {args.out_tsv}")
         print(f"out_subs: {args.out_subs}")
         print(f"stranded: {args.stranded}")
         print(f"kr: {args.kr}")
@@ -1154,7 +1166,8 @@ def main():
     else:
         parser.print_help()
 
+
+
 if __name__ == "__main__":
+    # Argument parser for command-line arguments
     main()
-
-
