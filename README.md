@@ -156,7 +156,7 @@ Example output:
 
 ## <a name="tutorial"></a>Tutorial
 
-We will analyze a small portion of an unpublished sedaDNA sample from China, prepared with double stranded library prep. It may take a few minutes to download files.
+We will analyze a small portion of an unpublished sedaDNA sample from China, prepared with double stranded library prep. The bam file has previously been query-sorted. It may take a few minutes to download files. 
 ```
 wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/CGG3_015421.lca
 wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/CGG3_015421.sub_sorted.bam
