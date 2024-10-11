@@ -775,10 +775,10 @@ def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_b
 
         # write 
         if pmds_in_bam:
-            row = [int(node), taxname, tn['total_reads'],round(tn['dp1'],4), round(tn['dm1'],4), round(duplicity,2), round(tn['avgdust'],2), round(tn['meanlength'], 2), round(tn['div'], 4), round(tn['ani'], 4), round(tn['avggc'], 3),
+            row = [int(node), taxname, tn['total_reads'],round(duplicity,2), round(tn['avgdust'],2), round(tn['dp1'],4), round(tn['dm1'],4), round(tn['meanlength'], 2), round(tn['div'], 4), round(tn['ani'], 4), round(tn['avggc'], 3),
                    round(dp1n,4), round(dm1n,4),numuniquekmers, tn['total_alignments'], round(tn['pmdsover2']/tn['total_reads'],3), round(tn['pmdsover4']/tn['total_reads'], 3), tn['tax_path']] 
         else:
-            row = [int(node), taxname, tn['total_reads'],round(tn['dp1'],4), round(tn['dm1'],4), round(duplicity,2), round(tn['avgdust'],2), round(tn['meanlength'], 2), round(tn['div'], 4), round(tn['ani'], 4), round(tn['avggc'], 3),
+            row = [int(node), taxname, tn['total_reads'],round(duplicity,2), round(tn['avgdust'],2),round(tn['dp1'],4), round(tn['dm1'],4), round(tn['meanlength'], 2), round(tn['div'], 4), round(tn['ani'], 4), round(tn['avggc'], 3),
                    round(dp1n,4), round(dm1n,4),numuniquekmers, tn['total_alignments'],tn['tax_path']] 
         rows.append(row)
 
@@ -1055,7 +1055,7 @@ def main():
 
     # Initialize
     parser = argparse.ArgumentParser(
-        description="Bamdam processes ancient environmental DNA bam and lca files. Type bamdam [command] -h for more detailed help regarding a specific command.")
+        description="Bamdam processes ancient metagenomic bam and lca files. Type bamdam [command] -h for more detailed help regarding a specific command.")
     
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -1141,7 +1141,7 @@ def main():
         sortorder = get_sorting_order(args.in_bam)
         if sortorder != "queryname":
             print("Error: Your bam file does not appear to be read-sorted. Please try again with it once it has been read-sorted (samtools sort -n), which should be the same order as your lca file. \n")
-            exit(-1) # remove this line to force continue
+            exit(-1) 
 
     if args.command == 'shrink':
         print("Hello! You are running bamdam shrink with the following arguments:")
@@ -1157,8 +1157,6 @@ def main():
             print(f"exclude_keywords: loaded from {args.exclude_keyword_file}")
         if hasattr(args, 'exclude_keywords') and args.exclude_keywords:
             print(f"exclude_keywords: {args.exclude_keywords}")
-        # if hasattr(args, 'exclude_keyword_file') or hasattr(args, 'exclude_keywords'):
-        #     print(f"exclude_under: {args.exclude_under}")
         if hasattr(args, 'annotate_pmd') and args.annotate_pmd:
             print(f"annotate_pmd: {args.annotate_pmd}")
 
@@ -1190,5 +1188,4 @@ def main():
 
 
 if __name__ == "__main__":
-    # Argument parser for command-line arguments
     main()
