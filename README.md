@@ -31,7 +31,7 @@ chmod +x bamdam
 
 ## <a name="description"></a>Description
 
-Bamdam is a post-mapping, post-least-common-ancestor toolkit for environmental DNA capture or shotgun sequencing data, used after reads been mapped to a reference database and run through the least common ancestor algorithm [ngsLCA](https://github.com/miwipe/ngsLCA). The input to bamdam is a read-sorted bam (also required by ngsLCA) and the .lca file, the latter of which is output from ngsLCA. 
+Bamdam is a post-mapping, post-least-common-ancestor toolkit for environmental DNA capture or shotgun sequencing data, used after reads have been mapped to a reference database and run through the least common ancestor algorithm [ngsLCA](https://github.com/miwipe/ngsLCA). The input to bamdam is a read-sorted bam (also required by ngsLCA) and the .lca file, the latter of which is output from ngsLCA. 
 
 The main two functions are bamdam **shrink** and bamdam **compute**. When mapping against large reference databases, the output bam files will often be huge and contain mostly irrelevant alignments; the reads with the most alignments are usually those assigned to uninformative taxonomic nodes (e.g. "Viridiplantae:kingdom"). Bamdam shrink produces a much smaller bam (and associated lca file) which still contains all informative alignments. Bamdam compute then takes in a (shrunken) bam and lca file and produces a large table in tsv format with one row per taxonomic node, including authentication metrics such as k-mer duplicity and mean read complexity. Users can then set their own filtering thresholds to decide which taxa look like real taxa rather than contaminants. 
 
