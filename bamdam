@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # bamdam by Bianca De Sanctis, bddesanctis@gmail.com 
-# last updated oct 10 2024
+# last updated oct 23 2024
 
 import sys 
 import re
@@ -462,8 +462,8 @@ def calculate_dust(seq):
     for i in range(firstwindowend - k + 1):
         kmer = seq[i:i + k]
         if not all(base in {'A', 'C', 'T', 'G'} for base in kmer):
-            print(f"Warning: Skipping DUST calculations for a read with non-ACGT characters.")
-            continue 
+            # print(f"Warning: Skipping DUST calculations for a read with non-ACGT characters.")
+            return 0 
         if kmer in kmer_counts:
             kmer_counts[kmer] += 1
         else:
@@ -1019,14 +1019,14 @@ def parse_exclude_keywords(args):
             with open(args.exclude_keyword_file, 'r') as f:
                 exclude_keywords.extend([line.strip() for line in f if line.strip()])
         
+        exclude_keywords = [kw.lstrip("'").lstrip('"').rstrip("'").rstrip('"') for kw in exclude_keywords] # strip quotes 
+
         formatted_keywords = []
         # good to surround the digit-only tax ids with a tab and a :, so we don't accidentally hit substring tax ids
         for keyword in exclude_keywords:
             if keyword.isdigit():
                 keyword = f"\\t{keyword}:"
             formatted_keywords.append(keyword)
-
-        formatted_keywords = [kw.lstrip("'").lstrip('"').rstrip("'").rstrip('"') for kw in formatted_keywords]
         
         return formatted_keywords
     else:
