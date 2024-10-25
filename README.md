@@ -116,6 +116,8 @@ If the input bam file was annotated with PMD scores, the tsv file will also cont
 
 In all cases unless otherwise specified, each read (not each alignment) is weighted equally.
 
+Bamdam compute aggregates statistics up the taxonomy and outputs rows for all taxonomic nodes up to the "upto" flag, so perhaps counterintuitively, results from bamdam compute after excluding higher-level taxonomic nodes in bamdam shrink may still contain rows for those nodes if there were reads assigned to nodes underneath those excluded which were not themselves excluded.
+
 ### <a name="extract"></a>bamdam extract
 
 A straightforward bash wrapper function to extract reads assigned to a specific taxonomic node from a bam file. Output is another bam file. Not very fast (bam i/o is slow). Accepts tax IDs or full tax strings.
