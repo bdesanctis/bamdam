@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
-# bamdam by Bianca De Sanctis, bddesanctis@gmail.com 
-# last updated oct 23 2024
+# bamdam by Bianca De Sanctis, bddesanctis@gmail.com  
+# last updated nov 14 2024
 
 import sys 
 import re
@@ -12,20 +12,22 @@ import argparse
 import os
 import hyperloglog
 import subprocess
-try: # optional library only needed for plotting 
+try: # optional library only needed for plotting 
     import matplotlib.pyplot as plt
     matplotlib_imported = True
 except:
     matplotlib_imported = False
-try: # optional library for progress bars 
+try: # optional library for progress bars 
     from tqdm import tqdm
     tqdm_imported = True
 except ImportError:
     tqdm_imported = False
 
 def get_sorting_order(file_path):
-    # this is the fastest way to check if HD is the first line of the header
+    # bamdam needs query / read sorted bams
+    # this is the fastest way to check if HD is the first line of the header 
     # a bam is basically a gzipped sam; take advantage of this so we don't have to read in the full header just for this check (pysam can't stream it)
+
     command = f"gunzip -dc {file_path}"
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE)
     # read the output in binary and manually decode it 
@@ -51,15 +53,42 @@ def get_sorting_order(file_path):
             return sorting_order
     except:
         return "unknown"
+    
+def find_lca_type(original_lca_path):
+    # is the lca file from ngslca output, or from metadmg output?
+    # let's detect it then act appropriately 
 
-def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_keywords): # exclude_under
+    lcaheaderlines = 0
+    with open(original_lca_path, 'r') as lcafile:
+        for lcaline in lcafile:
+            if "root" in lcaline and "#" not in lcaline:
+                break
+            lcaheaderlines += 1
+    
+    with open(original_lca_path,'r') as file:
+        for _ in range(lcaheaderlines):
+            next(file)
+        firstline = next(file)
+        line = firstline.split('\t')
+        # line[1] is the first tax id in an ngslca-style format, and the full read in metadmg-style format.
+        if ":" in line[1]:
+            filetype = "ngslca"
+        else:
+            filetype = "metadmg"
+        if filetype!= "ngslca" and filetype!= "metadmg":
+            print("\n Error: Your input lca file doesn't look like it's in lca file format")
+            sys.exit()
+
+    return filetype
+
+def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_keywords,lca_file_type): 
 
     print("\nWriting a filtered lca file...")
 
     lcaheaderlines = 0
     with open(original_lca_path, 'r') as lcafile:
         for lcaline in lcafile:
-            if "root" in lcaline:
+            if "root" in lcaline and "#" not in lcaline:
                 break
             lcaheaderlines += 1
     total_short_lca_lines = 0
@@ -72,12 +101,15 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
         for line in file:
             if upto in line:
                 # if exclude_under and any(keyword in line for keyword in exclude_keywords): # checks all nodes in the path 
-                #     continue
+                #     continue
                     # if you want to exclude all nodes underneath the ones you specified too, all you have to do is look for all the keywords in every line 
                 # else: 
                 entry = line.strip().split('\t')
                 if len(entry) > 1:  
-                    fields = entry[1:] # can ditch the read id 
+                    if lca_file_type=="ngslca":
+                        fields = entry[1:] # can ditch the read id 
+                    elif lca_file_type=="metadmg":
+                        fields = entry[6].split(';')
                     if exclude_keywords and any(keyword in fields[0] for keyword in exclude_keywords):
                         continue # this only checks the node the read is actually assigned to 
                     else:
@@ -102,21 +134,37 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
                 next(infile) 
             for line in infile:
                 tab_split = line.find('\t')
-                newreadname = line[:tab_split].rsplit(':', 3)[0]
+                if lca_file_type == "ngslca":
+                    newreadname = line[:tab_split].rsplit(':', 3)[0]
+                elif lca_file_type == "metadmg":
+                    newreadname = line[:tab_split]
                 if newreadname == oldreadname:
-                    print("Error: You have duplicate entries in your LCA file, for example " + newreadname + ". You should fix this and re-run BamDam. Here is a suggested fix: awk '!seen[$0]++' input_lca > output_lca")
+                    print("Error: You have duplicate entries in your LCA file, for example " + newreadname + ". You should fix this and re-run BamDam. Here is a suggested fix: awk '!seen[$0]++' input_lca > deduplicated_lca")
                     exit(-1)
                 if upto in line:
-                    # you can just go straight to the upto level and check if that node has high enough count 
+                    # you can just go straight to the upto level and check if that node has high enough count 
                     if exclude_keywords and any(keyword in entry[1] for keyword in exclude_keywords):
-                        continue # don't keep the ones that have the keywords in their exact assignment 
+                        continue # don't keep the ones that have the keywords in their exact assignment 
                     else:
                         entry = line.strip().split('\t')
-                        for field in entry[1:]:
-                            if f":{upto}" in field:
+                    if len(entry) > 1:  
+                        if lca_file_type == "ngslca":
+                            fields = entry[1:] 
+                        elif lca_file_type == "metadmg":
+                            fields = entry[6].split(';')
+                        for field in fields:
+                            if f":{upto}" in field or f':"{upto}"' in field or f":'{upto}'" in field:
+                                # ^ metadmg lca files like to put quotation marks everywhere; try to deal with this 
                                 number = field.split(':')[0]
                                 if number in goodnodes:
-                                    outfile.write(line)
+                                    if lca_file_type == "ngslca":
+                                        outfile.write(line)
+                                    elif lca_file_type == "metadmg":
+                                        # reformat the output lca as an ngslca file format no matter how it came in 
+                                        firstentry = ":".join(entry[0:4])
+                                        restentry = "\t".join(fields)
+                                        fullentry = "\t".join([firstentry, restentry]).replace('"', '') + "\n"
+                                        outfile.write(fullentry)
                                     total_short_lca_lines += 1
                                     break
 
@@ -127,10 +175,10 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
 
 def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded,minsimilarity,annotate_pmd,totallcalines): 
     # runs through the existing bam and the new short lca file at once, and writes only lines to the new bam which are represented in the short lca file
-    # does two passes, the first of which makes a shortened header as well and adds the command str to the end of the bam header
+    # does two passes, the first of which makes a shortened header as well and adds the command str to the end of the bam header
     # also annotates with (correct!) pmd scores as it goes - the original pmdtools has a bug for single stranded libraries
 
-    # now takes in minsimilarity as a percentage, and will keep reads w/ equal to or greater than NM flag to this percentage 
+    # now takes in minsimilarity as a percentage, and will keep reads w/ equal to or greater than NM flag to this percentage 
 
     if tqdm_imported:
         print(f"Writing a filtered bam file (a progress bar will initiate once the bam header has been written)...")
@@ -141,7 +189,7 @@ def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded
     lcaheaderlines = 0
     with open(short_lca_path, 'r') as lcafile:
         for lcaline in lcafile:
-            if "root" in lcaline:
+            if "root" in lcaline and "#" not in lcaline:
                 break
             lcaheaderlines += 1
     currentlcaline = lcaheaderlines
@@ -160,6 +208,7 @@ def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded
     
         currentlymatching = False
         notdone = True
+        bamreadnumber = 0
 
         try:
             bamread = next(infile)
@@ -168,18 +217,18 @@ def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded
 
         progress_bar = tqdm(total=totallcalines-lcaheaderlines, unit='lines', disable=not tqdm_imported) if tqdm_imported else None
         if progress_bar:
-            update_interval = 100 # this is arbitrary. could also be e.g. (totallcalines // 1000)
+            update_interval = 100 # this is arbitrary. could also be e.g. (totallcalines // 1000)
 
         while notdone:
             if bamread.query_name == lcareadname:
                 # copy this line and all the rest until you hit a nonmatching LCA line
-                readlength = bamread.query_length # same read length for all the alignments
+                readlength = bamread.query_length # same read length for all the alignments
                 similarity = 1 - bamread.get_tag('NM') / readlength # not the same NM for all the alignments
                 if similarity >= minsimilarity:
                     if annotate_pmd:
                         pmd = get_pmd(bamread, stranded)
                         bamread.set_tag('DS','%.3f' % pmd)  
-                    outfile.write(bamread) # write the read!
+                    outfile.write(bamread) # write the read!
                 currentlymatching = True
                 while currentlymatching:
                     try:
@@ -190,7 +239,7 @@ def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded
                                 if annotate_pmd:
                                     pmd = get_pmd(bamread, stranded)
                                     bamread.set_tag('DS','%.3f' % pmd) # replace a tag if it's already there
-                                outfile.write(bamread) # write the read! 
+                                outfile.write(bamread) # write the read! 
                         else:
                             currentlymatching = False
                     except StopIteration:
@@ -208,6 +257,7 @@ def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded
             else:
                 try:
                     bamread = next(infile)
+                    bamreadnumber +=1 
                 except StopIteration:
                     notdone = False
     if progress_bar:
@@ -216,8 +266,8 @@ def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded
     print("Wrote a filtered bam file. Done! \n") 
 
 def get_mismatches(seq, cigar, md):  
-    # parses a read, cigar and md string to determine mismatches and positions. 
-    # does not output info on insertions/deletions but accounts for them.
+    # parses a read, cigar and md string to determine mismatches and positions. 
+    # does not output info on insertions/deletions but accounts for them.
     # thanks jonas oppenheimer who wrote half of this function :)
 
     # goes in two passes: once w/ cigar and once w/ md 
@@ -227,8 +277,8 @@ def get_mismatches(seq, cigar, md):
 
     ref_seq = ''
     read_seq = ''
-    query_pos = 0 # indexes the ref reconstruction
-    read_pos = 0 # indexes the read reconstruction (which is the input read but with potential added "-"s if the ref has insertions)
+    query_pos = 0 # indexes the ref reconstruction
+    read_pos = 0 # indexes the read reconstruction (which is the input read but with potential added "-"s if the ref has insertions)
     for x in cig:
         cat = x[-1]
         if cat in ['H', 'P']: # doesn't consume reference or query
@@ -251,7 +301,7 @@ def get_mismatches(seq, cigar, md):
             ref_seq += 'N' * bases
             read_seq += '-' * bases
 
-        elif cat == 'I': # I: the read has something there and the reference doesn't, but pad them both 
+        elif cat == 'I': # I: the read has something there and the reference doesn't, but pad them both 
             read_seq += seq[read_pos:read_pos + bases] # 'N' * bases
             ref_seq += '-' * bases
             query_pos += bases
@@ -270,7 +320,7 @@ def get_mismatches(seq, cigar, md):
                 currchar = x[i+1]
                 refhere = currchar
                 readhere = "-" 
-                ref_pos += 1 # but not the read pos
+                ref_pos += 1 # but not the read pos
                 # don't need to append to mismatch list 
         else: 
             if x.isdigit(): # can be multiple digits 
@@ -285,8 +335,8 @@ def get_mismatches(seq, cigar, md):
                 char_list = list(ref_seq)
                 char_list[ref_pos] = x
                 ref_seq = "".join(char_list)
-                # moving on
-                mismatch_list.append([refhere,readhere,read_pos +1]) # in genetics we are 1-based (a->g at position 1 means the actual first position, whereas python is 0-based) 
+                # moving on
+                mismatch_list.append([refhere,readhere,read_pos +1]) # in genetics we are 1-based (a->g at position 1 means the actual first position, whereas python is 0-based) 
                 if refhere is None or readhere is None:
                     print("Warning: There appears to be an inconsistency with seq " + seq + " and cigar " + cigar + " and md " + md)
                     break
@@ -299,48 +349,73 @@ def get_mismatches(seq, cigar, md):
 def mismatch_table(read,cigar,md,flagsum):
     # wrapper for get_mismatches that also reverse complements if needed, and mirrors around the middle of the read so you shouldn't have to keep the length
 
-    readlength = len(read)
-
     # first parse the mismatches
     mms, refseq, readseq = get_mismatches(read,cigar,md)
 
-    # some processing: first, figure out if it's forward or backwards
+    readlength = len(readseq) # it is important to do len(readseq) and not len(read) because we may have padded it in get_mismatches to account for indels
+
+    # we also want all matches so we can get the denominator for the damage calculation
+    matchs = []
+    for pos in range(len(readseq)):
+        if refseq[pos] == readseq[pos]:
+            matchs.append([refseq[pos], readseq[pos], pos + 1])
+        # this will skip indels; eg C->"-" should not be counted in the damage denominator
+
+    # some processing: first, figure out if it's forward or backwards
     # second field of a bam is called a flagsum and it parses like this (see eg bowtie2 manual)
     bin_flagsum = bin(flagsum)[::-1]
     bit_position = 4 #  2^4 = 16 this flag means it's aligned in reverse
     backwards = len(bin_flagsum) > bit_position and bin_flagsum[bit_position] == '1' 
-    if backwards: # flip all the positions and reverse complement all the nucleotides. the read in the bam is reverse-complemented if aligned to the reverse strand. 
+
+    if backwards: # flip all the positions and reverse complement all the nucleotides. the read in the bam is reverse-complemented if aligned to the reverse strand. 
         complement = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C'}
         mmsc = []
-        for entry in range(0,len(mms)):
+        matchsc = []
+
+        for entry in range(0,len(mms)): # mismatches
             new_entry = [
-                complement.get(mms[entry][0]), 
-                complement.get(mms[entry][1]), 
+                complement.get(mms[entry][0],"N"), # make everything non-ACTG an N for this purpose
+                complement.get(mms[entry][1],"N"), 
                 readlength - mms[entry][2] +1
             ]
             mmsc.append(new_entry)
+
+        for entry in range(0, len(matchs)): # matches
+            new_entry = [
+                complement.get(matchs[entry][0],"N"), 
+                complement.get(matchs[entry][1],"N"), 
+                readlength - matchs[entry][2] + 1
+            ]
+            matchsc.append(new_entry)
     else:
         mmsc = mms
-    # now everything, EXCEPT unmerged but retained reverse mate pairs of paired end reads (which i should still try to catch later; to do), should be 5' -> 3' 
+        matchsc = matchs
+    # now everything EXCEPT unmerged but retained reverse mate pairs of paired end reads (which i should still try to catch later; maybe to do), should be 5' -> 3' 
 
-    for entry in range(0,len(mmsc)):
+    # mirroring for accurate cumulative damage counting later (end of read becomes -1, -2...)
+    for entry in range(0,len(mmsc)): # mismatches
         pos = mmsc[entry][2]
         if pos > readlength/2:
             mmsc[entry][2] = -(readlength - pos +1)
+            
+    for entry in range(0, len(matchsc)): # matches
+        pos = matchsc[entry][2]
+        if pos > readlength / 2:
+            matchsc[entry][2] = -(readlength - pos + 1)
 
-    return mmsc
+    return mmsc, matchsc, refseq
 
 def rev_complement(seq):
     complement = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N', '-': '-'}
     return ''.join(complement[base] for base in reversed(seq))
 
-def get_rep_kmer(seq): # representative canonical kmer representation for counting, gets the lexicographical min of a kmer and its rev complement
+def get_rep_kmer(seq): # representative canonical kmer representation for counting, gets the lexicographical min of a kmer and its rev complement
     rep_kmer = min(seq,rev_complement(seq))
     return rep_kmer
  
 def get_pmd(read, stranded):
-    ### important!!! the original PMDtools implementation has a bug:
-    # in lines 868 and 900 of the main python script, it multiplies the likelihood by the double-stranded models, and then there is an if statement that multiplies by the single-stranded models
+    ### important!!! the original PMDtools implementation has a bug:
+    # in lines 868 and 900 of the main python script, it multiplies the likelihood by the double-stranded models, and then there is an if statement that multiplies by the single-stranded models
     # resulting in totally incorrect pmd scores for single-stranded mode. the reimplementation here should be correct.
     
     # input is a pysam read object
@@ -350,13 +425,13 @@ def get_pmd(read, stranded):
     rawphred = read.query_qualities
     flagsum = read.flag
 
-    # set pmd score parameters . these are their original parameters, and i need to do some testing, but i think they are sensible enough in general. 
+    # set pmd score parameters . these are their original parameters, and i need to do some testing, but i think they are sensible enough in general. 
     P = 0.3
     C = 0.01
     pi = 0.001 
 
     # important note! in the PMDtools manuscript, they say "DZ=0" in the null model.
-    # however, in the PMDtools code, Dz=0.001 in the null model.
+    # however, in the PMDtools code, Dz=0.001 in the null model.
     # here i am making the latter choice because i think it makes more biological sense.
     Dn = 0.001
 
@@ -366,7 +441,7 @@ def get_pmd(read, stranded):
     backwards = len(bin_flagsum) > bit_position and bin_flagsum[bit_position] == '1' # backwards is a boolean 
     # do something if you are:
     mmsc, refseq, readseq = get_mismatches(seq, cigar, md)
-    # adjust phred index if there are things happening in the read
+    # adjust phred index if there are things happening in the read
     phred = [0 if base in ['-', 'N'] else rawphred.pop(0) for base in readseq]
 
     # run through both sequences to add up pmd likelihoods
@@ -379,7 +454,7 @@ def get_pmd(read, stranded):
         phred = phred[::-1]
     pmd_lik = 1
     null_lik = 1
-    pos = 0 # need a separate tracker to cope with indels. if there's a "-" in the read reconstruction because of an insertion in the ref, it should not count as a "position" in the read
+    pos = 0 # need a separate tracker to cope with indels. if there's a "-" in the read reconstruction because of an insertion in the ref, it should not count as a "position" in the read
 
     if stranded == "ss":
         for b in range(0,readlength):
@@ -389,14 +464,14 @@ def get_pmd(read, stranded):
             if refseqlist[b] == "C" and (readseqlist[b] == "T" or readseqlist[b] == "C"):
                 # everything is relevant to 5 prime and 3 prime ends, get both distances
                 epsilon = 1/3 * 10**(-phred[b] / 10)
-                z = pos + 1 # pos 1 has distance 1, from pmd manuscript
+                z = pos + 1 # pos 1 has distance 1, from pmd manuscript
                 y = readlength - pos
                 Dz = ((1-P)**(z-1))*P + C
                 Dy = ((1-P)**(y-1))*P + C
-                if readseqlist[b] == "T": # ss m
+                if readseqlist[b] == "T": # ss m
                     pmd_lik *= 1 - ((1-pi)*(1-epsilon)*(1-Dz)*(1-Dy) + (1-pi)*epsilon*Dz*(1-Dy) + (1-pi)*epsilon*Dy*(1-Dz) + pi*epsilon*(1-Dz)*(1-Dy))
                     null_lik *= 1 - ((1-pi)*(1-epsilon)*(1-Dn)*(1-Dn) + (1-pi)*epsilon*Dn*(1-Dn) + (1-pi)*epsilon*Dn*(1-Dn) + pi*epsilon*(1-Dn)*(1-Dn))                 
-                if readseqlist[b] == "C": # ss m
+                if readseqlist[b] == "C": # ss m
                     pmd_lik *= (1-pi)*(1-epsilon)*(1-Dz)*(1-Dy) + (1-pi)*epsilon*Dz*(1-Dy) + (1-pi)*epsilon*Dy*(1-Dz) + pi*epsilon*(1-Dz)*(1-Dy)
                     null_lik *= (1-pi)*(1-epsilon)*(1-Dn)*(1-Dn) + (1-pi)*epsilon*Dn*(1-Dn) + (1-pi)*epsilon*Dn*(1-Dn) + pi*epsilon*(1-Dn)*(1-Dn)
                 pos +=1 
@@ -408,10 +483,10 @@ def get_pmd(read, stranded):
             if refseqlist[b] == "C" and (readseqlist[b] == "T" or readseqlist[b] == "C"):
                 # get distance and stuff to 5 prime end
                 epsilon = 1/3 * 10**(-phred[b] / 10)
-                z = pos + 1   # 5 prime
+                z = pos + 1   # 5 prime
                 Dz = ((1-P)**(z-1))*P + C
 
-                if readseqlist[b] == "T": # ds mm 
+                if readseqlist[b] == "T": # ds mm 
                     pmd_lik *=  1 - ((1-pi)*(1-epsilon)*(1-Dz) + (1-pi)*epsilon*Dz + pi*epsilon*(1-Dz)) 
                     null_lik *= 1 - ((1-pi)*(1-epsilon)*(1-Dn) + (1-pi)*epsilon*Dn + pi*epsilon*(1-Dn)) 
                 
@@ -422,9 +497,9 @@ def get_pmd(read, stranded):
             if refseqlist[b] == "G" and (readseqlist[b] == "A" or readseqlist[b] == "G"):
                 # get distance and stuff to 3 prime end
                 epsilon = 1/3 * 10**(-phred[b] / 10) # phred score 30 gives an error rate of 0.001 (then * 1/3)
-                z = readlength - pos  # 3 prime
+                z = readlength - pos  # 3 prime
                 Dz = ((1-P)**(z-1))*P + C
-                if readseqlist[b] == "A": # ds mm
+                if readseqlist[b] == "A": # ds mm
                     pmd_lik *=  1 - ((1-pi)*(1-epsilon)*(1-Dz) + (1-pi)*epsilon*Dz + pi*epsilon*(1-Dz)) 
                     null_lik *= 1 - ((1-pi)*(1-epsilon)*(1-Dn) + (1-pi)*epsilon*Dn + pi*epsilon*(1-Dn)) 
                 if readseqlist[b] == "G": # ds m
@@ -440,13 +515,15 @@ def get_pmd(read, stranded):
 
     return pmd_score
 
-def line_count(file_path): # just a wc -l wrapper
+def line_count(file_path): # just a wc -l wrapper
     result = subprocess.run(['wc', '-l', file_path], stdout=subprocess.PIPE, text=True)
     line_count = int(result.stdout.split()[0])
     return line_count
 
 def calculate_dust(seq):
     # parameters as given by sga and original publication: Morgulis A. "A fast and symmetric DUST implementation to Mask Low-Complexity DNA Sequences". J Comp Bio.
+    # between 0 and 100 inclusive; throws a -1 if the read has an N in it
+    
     readlength = len(seq)
     if readlength < 3:
         print(f"Warning: Cannot calculate dust score for a very short sequence (wait, why do you have reads this short?)")
@@ -462,8 +539,8 @@ def calculate_dust(seq):
     for i in range(firstwindowend - k + 1):
         kmer = seq[i:i + k]
         if not all(base in {'A', 'C', 'T', 'G'} for base in kmer):
-            # print(f"Warning: Skipping DUST calculations for a read with non-ACGT characters.")
-            return 0 
+            # print(f"Warning: Skipping DUST calculations for a read with non-ACGT characters.")
+            return -1
         if kmer in kmer_counts:
             kmer_counts[kmer] += 1
         else:
@@ -471,7 +548,7 @@ def calculate_dust(seq):
     currentdust = sum((count * (count - 1)) / 2 for count in kmer_counts.values()) 
 
     if firstwindowend == readlength:
-        #  read is less than window size
+        #  read is less than window size
         return currentdust * (100 / maxpossibledust) 
 
     # otherwise perform sliding window :
@@ -479,6 +556,9 @@ def calculate_dust(seq):
     for i in range(1, readlength - w +1):
         oldkmer = seq[(i-1) : (i+2)]
         newkmer = seq[(i+w-3): (i+w)]
+        if not all(base in {'A', 'C', 'T', 'G'} for base in newkmer):
+            # print(f"Warning: Skipping DUST calculations for a read with non-ACGT characters.")
+            return -1
         kmer_counts[oldkmer] += -1
         if kmer_counts[oldkmer] == 0:
             del kmer_counts[oldkmer]
@@ -493,14 +573,14 @@ def calculate_dust(seq):
     return maxdust * 100 / (maxpossibledust) #  standardize so it's max 100 
 
 def get_hll_info(seq,k):
-    # output to dump into hll objects
+    # output to dump into hll objects
     rep_kmers = []
     total_kmers = 0
     if len(seq) > k:
         for i in range(len(seq) - k + 1):
             kmer = seq[i:i + k]
             if not all(base in {'A', 'C', 'T', 'G'} for base in kmer):         
-                print(f"Warning: Skipping k-mer calculations for a read with non-ACGT characters.")       
+                #print(f"Warning: Skipping k-mer calculations for a read with non-ACGT characters.")       
                 continue # skip this k-mer, non ACTG characters are not allowed
             else:
                 rep_kmers.append(get_rep_kmer(kmer))
@@ -509,18 +589,19 @@ def get_hll_info(seq,k):
         print(f"Warning: One of your reads is shorter than k.")
     return rep_kmers, total_kmers
 
-
 def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
     print("\nGathering substitution and kmer metrics per node...")
+    # this function is organized in an unintuitive way. it uses a bunch of nested loops to pop between the bam and lca files line by line. 
+    # it matches up bam read names and lca read names and aggregates some things per alignment, some per read, and some per node, the last of which are added into a large structure node_data.
 
     lcaheaderlines = 0
     with open(lcafile_path, 'r') as lcafile:
         for lcaline in lcafile:
-            if "root" in lcaline:
+            if "root" in lcaline and "#" not in lcaline:
                 break
             lcaheaderlines += 1
 
-    # initialize 
+    # initialize 
     node_data = {}
     bamfile = pysam.AlignmentFile(bamfile_path, "rb",require_index=False) 
     lcafile = open(lcafile_path, 'r')
@@ -534,20 +615,17 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
     nms = 0 
     pmdsover2 = 0
     pmdsover4 = 0
-    are_pmds_in_the_bam = True # just assume true, then set to false quickly below if you notice otherwise 
-    ctp1 = 0
-    ctm1 = 0
-    gam1 = 0
-    div = 0
+    are_pmds_in_the_bam = True # just assume true, then set to false quickly below if you notice otherwise 
     lcalinesskipped = 0
+    readswithNs = 0
 
     currentlcalinenum = 0
     if tqdm_imported:
         totallcalines = line_count(lcafile_path)
-        # should be super fast compared to anything else; probably worth it to initiate a progress bar.
+        # should be super fast compared to anything else; probably worth it to initiate a progress bar.
         progress_bar = tqdm(total=totallcalines-lcaheaderlines, unit='lines', disable=not tqdm_imported) if tqdm_imported else None
         if progress_bar:
-            update_interval = 100 # this is arbitrary ofc. could also be e.g. (totallcalines // 1000) 
+            update_interval = 100 # this is arbitrary ofc. could also be e.g. (totallcalines // 1000) 
 
     for _ in range(lcaheaderlines +1):
         currentlcaline = next(lcafile) 
@@ -558,11 +636,12 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
         readname = read.query_name
 
         # immediately find out if it's a new read. if so, you JUST finished the last read, so do a bunch of stuff for it. 
+        # the first read will skip this if statement because of the second condition
         if readname != oldreadname and oldreadname != "":
 
             # do k-mer things for this read
             dust = calculate_dust(seq)
-            # then get all the rep kmers to dump into the hyperloglog for each relevant node below
+            # then get all the rep kmers to dump into the hyperloglog for each relevant node below
             rep_kmers, total_kmers = get_hll_info(seq,kn)
 
             # get the lca entry and nodes we wanna update
@@ -579,7 +658,7 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
                 colon_split = lcaentry[0].rsplit(':', 3)[0]
                 lcareadname = colon_split
                 if progress_bar and (currentlcalinenum % update_interval == 0) :
-                    progress_bar.update(update_interval)  # Update the progress bar
+                    progress_bar.update(update_interval)  # update the progress bar
 
             fields = lcaentry[1:]
             nodestodumpinto = []
@@ -592,39 +671,36 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
 
             # now update everything to all the relevant nodes
             for node in nodestodumpinto:
+
+                # you will skip this if statement if your node already exists; otherwise just initialize it then move on
                 if node not in node_data:
-                    # that's ok! add it. 
                     if are_pmds_in_the_bam:
                         node_data[node] = {'total_reads': 0,'pmdsover2': 0, 'pmdsover4': 0, 'meanlength': 0, 'total_alignments': 0, 
-                                       'ani': 0, 'avgdust' : 0, 'avggc': 0, 'tax_path' : "", 'subs': {},
-                                       'dp1' : 0, 'dm1' : 0, 'div': 0, 'hll': hyperloglog.HyperLogLog(0.01), 'totalkmers' : 0 }
+                                       'ani': 0, 'avgdust' : 0, 'avgreadgc': 0, 'tax_path' : "", 'subs': {}, 'damagerelevantreadsp1': 0, 'damagerelevantreadsm1': 0,
+                                       'dp1' : 0, 'dm1' : 0,  'hll': hyperloglog.HyperLogLog(0.01), 'totalkmers' : 0}
                     else:
                         node_data[node] = {'total_reads': 0,'meanlength': 0, 'total_alignments': 0, 
-                                       'ani': 0, 'avgdust' : 0, 'avggc': 0, 'tax_path' : "", 'subs': {},
-                                       'dp1' : 0, 'dm1' : 0, 'div': 0, 'hll': hyperloglog.HyperLogLog(0.01), 'totalkmers' : 0 }
+                                       'ani': 0, 'avgdust' : 0, 'avgreadgc': 0, 'tax_path' : "", 'subs': {}, 'damagerelevantreadsp1': 0, 'damagerelevantreadsm1': 0,
+                                       'dp1' : 0, 'dm1' : 0, 'hll': hyperloglog.HyperLogLog(0.01), 'totalkmers' : 0}
+                        
                 node_data[node]['meanlength'] = ((node_data[node]['meanlength'] * node_data[node]['total_reads']) + readlength) / (node_data[node]['total_reads'] + 1)
-                node_data[node]['avgdust'] = ( (node_data[node]['avgdust'] * node_data[node]['total_reads']) + dust) / (node_data[node]['total_reads'] + 1)
+
+                if dust != -1:
+                    node_data[node]['avgdust'] = ( (node_data[node]['avgdust'] * node_data[node]['total_reads']) + dust) / (node_data[node]['total_reads'] + 1)
+                else:
+                    readswithNs +=1 
+
                 ani_for_this_read = (readlength - nms/num_alignments)/readlength 
                 node_data[node]['ani'] = (ani_for_this_read + node_data[node]['ani'] * node_data[node]['total_reads']) / (node_data[node]['total_reads'] + 1)
                 gc_content_for_this_read = (seq.count('C') + seq.count('G')) / readlength
-                node_data[node]['avggc'] = ((node_data[node]['avggc'] * node_data[node]['total_reads']) + gc_content_for_this_read) / (node_data[node]['total_reads'] + 1)
+                node_data[node]['avgreadgc'] = ((node_data[node]['avgreadgc'] * node_data[node]['total_reads']) + gc_content_for_this_read) / (node_data[node]['total_reads'] + 1)
                 node_data[node]['total_alignments'] += num_alignments
+
                 if are_pmds_in_the_bam:
                     node_data[node]['pmdsover2'] += pmdsover2 / num_alignments
                     node_data[node]['pmdsover4'] += pmdsover4 / num_alignments
-                ctp1 = currentsubdict.get("['C', 'T', 1]", 0) # c -> t on the pos 1 
-                ctm1 = currentsubdict.get("['C', 'T', -1]", 0) # c -> t on the pos 1 
-                gam1 = currentsubdict.get("['G', 'A', -1]", 0) # c -> t on the pos 1 
-                # ok, so on joshua kapp's suggestion, i used to only add to dp1 and dm1 if all the alignments for that read had a c>t, which does make sense.
-                # but then it doesn't match the damage plots and that bugs me a lot, so i went back to adding the proportion of reads which had a c>t.
-                # an if ctp1 == num_alignments:  will do it josh's way 
-                node_data[node]['dp1'] = ((node_data[node]['dp1'] * node_data[node]['total_reads']) + (ctp1/num_alignments) ) / (node_data[node]['total_reads'] + 1)
-                if stranded == "ss":
-                    node_data[node]['dm1'] = ((node_data[node]['dm1'] * node_data[node]['total_reads']) + (ctm1/num_alignments) )  / (node_data[node]['total_reads'] + 1)
-                if stranded == "ds":
-                    node_data[node]['dm1'] = ((node_data[node]['dm1'] * node_data[node]['total_reads']) + (gam1/num_alignments) ) / (node_data[node]['total_reads'] + 1)
 
-                # update hyperloglogs
+                # update hyperloglogs
                 for kmer in rep_kmers:
                     node_data[node]['hll'].add(kmer)
                 node_data[node]['totalkmers'] += total_kmers
@@ -639,16 +715,13 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
                             node_data[node]['subs'][sub] += count / num_alignments
                         else:
                             node_data[node]['subs'][sub] = count / num_alignments # so, this can be up to 1 per node. 
-                # last bits to update
-                div = other_sub_count / (num_alignments * readlength)
-                node_data[node]['div'] = ((node_data[node]['div'] * node_data[node]['total_reads']) + div ) / (node_data[node]['total_reads'] + 1)
                 # add the tax path if it's not already there
                 if node_data[node]['tax_path'] == "":
                     lca_index = next(i for i, entry in enumerate(lcaentry) if entry.startswith(node))
                     tax_path = ','.join(lcaentry[lca_index:]).replace('\n','')
                     node_data[node]['tax_path'] = tax_path
                 
-                # only at the end should you update total reads 
+                # only at the end should you update total reads 
                 node_data[node]['total_reads'] += 1
 
             # move on to the next lca entry. re initialize a bunch of things here 
@@ -666,10 +739,6 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
             if are_pmds_in_the_bam:
                 pmdsover2 = 0
                 pmdsover4 = 0
-            ctp1 = 0
-            ctm1 = 0
-            gam1 = 0
-            div = 0 
 
         # now for the current alignment.
         # the following might change for different alignments of the same read: 
@@ -692,9 +761,11 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
 
         # go and get the mismatch table for this read if the name/md/cigar/flagsum is different to before (this is expensive, so avoid it when possible)
         if (readname != oldreadname) or (cigar != oldcigar) or (md != oldmd) or (flagsum != oldflagsum):
-            subs = mismatch_table(seq,cigar,md,flagsum) 
+            subs, matches, refseq = mismatch_table(seq,cigar,md,flagsum) 
             oldcigar = cigar; oldmd = md; oldflagsum = flagsum
-        for sub in subs:
+
+        allsubs = subs + matches
+        for sub in allsubs:
             key = "".join(str(sub))
             if key in currentsubdict:
                 currentsubdict[key] +=1
@@ -716,8 +787,12 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
     lcafile.close()
 
     if lcalinesskipped > 0:
-        print("\n Warning: " + str(lcalinesskipped) + " reads in the input LCA file did not appear in the input bam file and so were not used. This may have happened if the minimum similarity used in bamdam shrink did not match that used in ngsLCA. This will not affect output statistics, except that these reads will not be included.")
+        print("\nWarning: " + str(lcalinesskipped) + " reads in the input LCA file did not appear in the input bam file and so were not used. This may have happened if the minimum similarity used in bamdam shrink did not match that used in ngsLCA. This will not affect output statistics, except that these reads will not be included.")
         
+    if readswithNs >0 :
+        print("\nSkipped k-mer counting and DUST score computation for " + str(readswithNs) + " reads with non-ACGT characters. \n" +
+              "If all reads assigned to a taxonomic node have non-ACGT characters, both the mean DUST and duplicity will be 0 for that node.")
+
     print("\nGathered substitution and kmer data for " + str(len(node_data)) + " taxonomic nodes. Now sorting and writing output files... ")
 
     return node_data, are_pmds_in_the_bam
@@ -727,7 +802,7 @@ def format_subs(subs, nreads):
     
     for key, value in subs.items():
         # extract position and check if it is within the range -15 to 15 (more is unnecessary for damage)
-        # easy to remove the condition if you want to write all of the subs though!
+        # easy to remove the condition if you want to write all of the subs though!
         parts = key.strip("[]").replace("'", "").split(", ")
         pos = int(parts[2])
         if (-15 <= pos <= 15) and (parts[0] in {'A', 'C', 'T', 'G'}) and (parts[1] in {'A', 'C', 'T', 'G'}):
@@ -738,6 +813,53 @@ def format_subs(subs, nreads):
 
     return " ".join(sub[1] for sub in formatted_subs)
 
+def calculate_node_damage(subs, stranded):
+    # also in here calculate the avg gc content of the reference
+
+    ctp1 = 0  # C>T at 5' position 1
+    ctm1 = 0  # C>T at 3' position -1 for ss
+    gam1 = 0  # G>A at 3' position -1 for ds
+    c_p1 = 0  # total C at 5' position 1
+    c_m1 = 0  # total C at 3' position -1 for ss
+    g_m1 = 0  # total G at 3' position -1 for ds
+    total_gc = 0 # gc content in ref 
+    total_bases = 0
+
+    for key, count in subs.items():
+        parts = key.strip("[]").replace("'", "").split(", ")
+        
+        from_base, to_base, pos = parts[0], parts[1], int(parts[2])
+
+        # 5' end: check for C>T and all Cs at position +1
+        if from_base == 'C' and pos == 1:
+            if to_base == 'T':
+                ctp1 += count  # C>T at position 1
+            c_p1 += count  # all Cs at position 1
+
+        # 3' end (ss): check for C>T and all Cs at position -1
+        if stranded == "ss" and from_base == 'C' and pos == -1:
+            if to_base == 'T':
+                ctm1 += count  # C>T at position -1
+            c_m1 += count  # all Cs at position -1
+
+        # 3' end (ds): check for G>A and all Gs at position -1
+        if stranded == "ds" and from_base == 'G' and pos == -1:
+            if to_base == 'A':
+                gam1 += count  # G>A at position -1
+            g_m1 += count  # all Gs at position -1
+
+        # calculate total GC content on the reference
+        if from_base == 'C' or from_base == 'G':
+            total_gc += count  
+
+        total_bases += count  
+
+    avgrefgc = total_gc / total_bases if total_bases > 0 else 0
+
+    dp1 = ctp1 / c_p1 if c_p1 > 0 else 0
+    dm1 = (ctm1 / c_m1 if c_m1 > 0 else 0) if stranded == "ss" else (gam1 / g_m1 if g_m1 > 0 else 0)
+
+    return dp1, dm1, avgrefgc
 
 def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_bam):
     # parses a dictionary where keys are node tax ids, and entries are total_reads, meanlength, total_alignments, etc 
@@ -745,11 +867,11 @@ def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_b
     statsfile = open(tsv_path, 'w', newline='')
     subsfile = open(subs_path, 'w', newline='')
     if pmds_in_bam:
-        header = ['TaxNodeID', 'TaxName', 'TotalReads','Duplicity', 'MeanDust','Damage+1', 'Damage-1','MeanLength', 'Div', 'ANI','AvgGC',
-                   'ND+1', 'ND-1', 'UniqueKmers', 'TotalAlignments', 'PMDsover2', 'PMDSover4','taxpath'] 
+        header = ['TaxNodeID', 'TaxName', 'TotalReads','Duplicity', 'MeanDust','Damage+1', 'Damage-1','MeanLength', 'ANI','AvgReadGC','AvgRefGC',
+                   'UniqueKmers', 'TotalAlignments', 'PMDsover2', 'PMDSover4','taxpath'] 
     else:
-        header = ['TaxNodeID', 'TaxName', 'TotalReads','Duplicity', 'MeanDust','Damage+1', 'Damage-1','MeanLength', 'Div', 'ANI','AvgGC',
-                   'ND+1', 'ND-1', 'UniqueKmers', 'TotalAlignments', 'taxpath'] 
+        header = ['TaxNodeID', 'TaxName', 'TotalReads','Duplicity', 'MeanDust','Damage+1', 'Damage-1','MeanLength', 'ANI','AvgReadGC','AvgRefGC',
+                   'UniqueKmers', 'TotalAlignments', 'taxpath'] 
     statsfile.write('\t'.join(header) + '\n')
     writer = csv.writer(statsfile, delimiter='\t', quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
     subswriter = csv.writer(subsfile, delimiter='\t', quotechar='"', quoting=csv.QUOTE_NONE)
@@ -763,23 +885,32 @@ def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_b
         # get formatted subs
         fsubs = format_subs(tn['subs'], tn['total_reads'])
 
-        # number of unique k-mers approximated by the hyperloglog algorithm
+        # number of unique k-mers approximated by the hyperloglog algorithm 
         numuniquekmers = len(tn['hll'])
-        duplicity = tn['totalkmers'] / numuniquekmers
+        if numuniquekmers > 0:
+            duplicity = tn['totalkmers'] / numuniquekmers
+        else:
+            duplicity = 0
 
         taxname = tn['tax_path'].split(",")[0].split(":")[1]
 
-        # get normalized +1 and -1 damage frequencies
-        dp1n = tn['dp1'] - tn['div']
-        dm1n = tn['dm1'] - tn['div']
+        # only now calculate damage per node from the subs dict (see output subs file)
+        # do not use formatted subs ; these should be raw numbers: how many READS for this taxa have these matches/mismatches?
+        # # (avg'd over all the alignments per read, so maybe not an integer) 
+        # also calculate the gc content for the average ref (so, unbiased by damage), weighted equally by read, not alignment
+        dp1, dm1, avgrefgc  = calculate_node_damage(tn['subs'], stranded)
 
         # write 
         if pmds_in_bam:
-            row = [int(node), taxname, tn['total_reads'],round(duplicity,2), round(tn['avgdust'],2), round(tn['dp1'],4), round(tn['dm1'],4), round(tn['meanlength'], 2), round(tn['div'], 4), round(tn['ani'], 4), round(tn['avggc'], 3),
-                   round(dp1n,4), round(dm1n,4),numuniquekmers, tn['total_alignments'], round(tn['pmdsover2']/tn['total_reads'],3), round(tn['pmdsover4']/tn['total_reads'], 3), tn['tax_path']] 
+            row = [int(node), taxname, tn['total_reads'], round(duplicity, 2), round(tn['avgdust'], 2), 
+                   round(dp1, 4), round(dm1, 4), 
+                   round(tn['meanlength'], 2),  round(tn['ani'], 4), round(tn['avgreadgc'], 3),round(avgrefgc, 3),
+                   round(tn['pmdsover2'] / tn['total_reads'], 3), round(tn['pmdsover4'] / tn['total_reads'], 3), tn['tax_path']]
         else:
-            row = [int(node), taxname, tn['total_reads'],round(duplicity,2), round(tn['avgdust'],2),round(tn['dp1'],4), round(tn['dm1'],4), round(tn['meanlength'], 2), round(tn['div'], 4), round(tn['ani'], 4), round(tn['avggc'], 3),
-                   round(dp1n,4), round(dm1n,4),numuniquekmers, tn['total_alignments'],tn['tax_path']] 
+            row = [int(node), taxname, tn['total_reads'], round(duplicity, 2), round(tn['avgdust'], 2), 
+                   round(dp1, 4), round(dm1, 4), 
+                   round(tn['meanlength'], 2),  round(tn['ani'], 4), round(tn['avgreadgc'], 3),round(avgrefgc, 3),
+                   numuniquekmers, tn['total_alignments'], tn['tax_path']]
         rows.append(row)
 
         subsrows[int(node)] = [int(node), taxname, fsubs]
@@ -797,33 +928,173 @@ def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_b
 
     print("Wrote final tsv and subs files. Done!")
 
+def extract_reads(in_lca, in_bam, out_bam, tax, subset_header = False, only_top_ref = False):
+    # extracts all reads with a tax path containing a certain keyword.
+    # also optionally shortens the header to only necessary ids.
+    # subsetting the header is kinda slow because it requires running through the input twice.
 
-def extract_reads(in_lca, in_bam, out_bam, tax):
-    # a very basic wrapper for grep / awk / samtools view.
-    # writes a temp file with readnames, because that's what samtools view wants. 
-    # actually i did try to do this more cleverly, using the known ordering of bam and lca, but it was slower.
+    if only_top_ref and not subset_header:
+        print("Error: The --only_top_ref flag requires the --subset_header flag to be set. Please set both flags and re-run.")
+        sys.exit()
+
+    # parse keyword.
+    # if you gave in a tax id as a digit, you probably are referring to the tax id and don't want to also get paths with the keyword as a substring of another tax id (eg you gave 200 and you get 2001)
     tax_pattern = f"\\t{tax}:" if tax.isdigit() else tax
-    tmp_file = f"{out_bam}.readnames.tmp"
+
+    # if you don't need to subset the header and you're happy with keeping all the refs, this is easy.
+    # in this case, the fastest way to do this is to pass samtools a file of read names. 
+    if not subset_header and not only_top_ref:
+        # essentially this is a wrapper for grep / awk / samtools view (with the samtools inside pysam).
+        # writes (then later deletes) a temp file with readnames, because that's what samtools view wants. 
+        # actually i did try to do this more cleverly, using the known ordering of bam and lca, but it was slower.
+        hashtax = abs(hash(tax_pattern)) # ensures no accidental file overwriting; the abs is because sometimes the hash is negative
+        print("Writing a temp file to the current directory. Will delete when done.")
+        tmp_file = f"{out_bam}.{hashtax}.readnames.tmp"
+        # get all the associated read names with the tax keyword 
+        grep_command = (
+            f"grep '{tax_pattern}' {in_lca} | awk -F'\\t' '{{print $1}}' "
+            f"| awk -F':' '{{for(i=1; i<=NF-3; i++) printf $i (i<NF-3 ? \":\" : \"\\n\")}}' > {tmp_file}"
+        )
+        # writes all the read names to a temp file 
+        result = subprocess.run(grep_command, shell=True)
+        if result.returncode != 0:
+            print(f"No matches found for keyword: {tax} or grep/awk command failed.")
+            return  
+        # if you don't need to subset the header and you're happy with all the refs, this is easy.
+        pysam.view("-N", tmp_file, "-b", in_bam, "-o", out_bam, catch_stdout=False)
+        try:
+            os.remove(tmp_file)
+        except OSError as e:
+            print(f"Error removing temp file: {tmp_file} : {e.strerror}")
+        return
+
+    # otherwise, we gotta deal with keeping the read names in memory. go get all the relevant references
     grep_command = (
         f"grep '{tax_pattern}' {in_lca} | awk -F'\\t' '{{print $1}}' "
-        f"| awk -F':' '{{for(i=1; i<=NF-3; i++) printf $i (i<NF-3 ? \":\" : \"\\n\")}}' > {tmp_file}"
+        f"| awk -F':' '{{for(i=1; i<=NF-3; i++) printf $i (i<NF-3 ? \":\" : \"\\n\")}}'"
     )
-    result = subprocess.run(grep_command, shell=True)
+    result = subprocess.run(grep_command, shell=True, capture_output=True, text=True)
     if result.returncode != 0:
         print(f"No matches found for keyword: {tax} or grep/awk command failed.")
         return
-    pysam.view("-N", tmp_file, "-b", in_bam, "-o", out_bam, catch_stdout=False)
-    try:
-        os.remove(tmp_file)
-    except OSError as e:
-        print(f"Error: {tmp_file} : {e.strerror}")
+    read_names = set(result.stdout.strip().splitlines())
+
+    with pysam.AlignmentFile(in_bam, "rb") as bam_in:
+        header = bam_in.header.to_dict()
+        reference_count = {}
+
+        for read in bam_in:
+            if read.query_name in read_names:
+                ref_name = bam_in.get_reference_name(read.reference_id)
+                if ref_name:
+                    reference_count[ref_name] = reference_count.get(ref_name, 0) + 1
+    if only_top_ref:
+        # find the most common reference
+        most_common_reference = max(reference_count, key=reference_count.get)
+        print(f"The most common reference is {most_common_reference} with {reference_count[most_common_reference]} alignments.")
+        print(f"Your output bam will contain all alignments to this reference, even if there is more than one per read.")
+        header['SQ'] = [sq for sq in header.get('SQ', []) if sq['SN'] == most_common_reference]
+        reference_names = {most_common_reference}
+    else: # get all the headers matching all of the refs
+        reference_names = set(reference_count.keys())
+        header['SQ'] = [sq for sq in header.get('SQ', []) if sq['SN'] in reference_names]
+
+    # we have to re-link the reference IDs in each read row to the new header because of how the bam compression works
+    ref_name_to_id = {sq['SN']: idx for idx, sq in enumerate(header.get('SQ', []))}
+    # write the filtered reads with the updated header and re-linked reference IDs
+    with pysam.AlignmentFile(out_bam, "wb", header=header) as bam_writer:
+        with pysam.AlignmentFile(in_bam, "rb") as bam_reader_again:
+            for read in bam_reader_again:
+                if read.query_name in read_names:
+                    # relink the reference_id to match the new header
+                    if read.reference_id >= 0:
+                        ref_name = bam_reader_again.get_reference_name(read.reference_id)
+                        if ref_name in ref_name_to_id:
+                            read.reference_id = ref_name_to_id[ref_name]
+                        else:
+                            continue  # skip reads with references not in the new header
+                    bam_writer.write(read)
+
+def calculate_damage_for_plot(items):
+    # specific to plotdamage
+
+    ctp_5prime = {i: 0 for i in range(1, 16)}  # C>T at 5' positions 1 to 15
+    gap_5prime = {i: 0 for i in range(1, 16)}  # G>A at 5' positions 1 to 15
+    total_c_5prime = {i: 0 for i in range(1, 16)}  # total C at 5' positions 1 to 15
+    total_g_5prime = {i: 0 for i in range(1, 16)}  # total G at 5' positions 1 to 15
+
+    ctp_3prime = {i: 0 for i in range(1, 16)}  # C>T at 3' positions -1 to -15
+    total_c_3prime = {i: 0 for i in range(1, 16)}  # total C at 3' positions -1 to -15
+    gap_3prime = {i: 0 for i in range(1, 16)}  # G>A at 3' positions -1 to -15
+    total_g_3prime = {i: 0 for i in range(1, 16)}  # total G at 3' positions -1 to -15
+
+    other_5prime = {i: 0 for i in range(1, 16)}  # other mismatches at 5' positions (not including C>T or G>A)
+    other_3prime = {i: 0 for i in range(1, 16)}  # other mismatches at 3' positions (not including C>T or G>A)
+    total_nondeam_5prime = {i: 0 for i in range(1, 16)} #  denominator : all non C>T or G>A matches or mismatches at each position
+    total_nondeam_3prime = {i: 0 for i in range(1, 16)} 
+
+    for item in items:
+        # split each item into mutation and proportion parts
+        mutation, proportion = item.split(":")
+        from_base, to_base, pos = mutation[:1], mutation[1:2], int(mutation[2:])
+        count = float(proportion)  
+
+        # 5'
+        if 1 <= pos <= 15:
+            if from_base == 'C':
+                if to_base == 'T':
+                    ctp_5prime[pos] += count  # C>T at 5' positions 1 to 15
+                total_c_5prime[pos] += count  
+            elif from_base == 'G':
+                if to_base == 'A':
+                    gap_5prime[pos] += count  # G>A at 5' positions 1 to 15
+                total_g_5prime[pos] += count  
+
+            if from_base == to_base:
+                total_nondeam_5prime[pos] += count
+            if from_base != to_base:
+                if (from_base == 'C' and to_base == 'T') or (from_base == 'G' and to_base == 'A'):
+                    continue 
+                else:
+                    other_5prime[pos] += count
+                    total_nondeam_5prime[pos] += count
+
+        # 3' 
+        elif -15 <= pos <= -1:
+            abs_pos = abs(pos)
+            if from_base == 'C':
+                if to_base == 'T':
+                    ctp_3prime[abs_pos] += count  # C>T at 3' positions -1 to -15
+                total_c_3prime[abs_pos] += count  
+            elif from_base == 'G':
+                if to_base == 'A':
+                    gap_3prime[abs_pos] += count  # G>A at 3' positions -1 to -15
+                total_g_3prime[abs_pos] += count 
+            
+            if from_base == to_base:
+                total_nondeam_3prime[abs_pos] += count
+            if from_base != to_base:
+                if (from_base == 'C' and to_base == 'T') or (from_base == 'G' and to_base == 'A'):
+                    continue 
+                else:
+                    other_3prime[abs_pos] += count
+                    total_nondeam_3prime[abs_pos] += count
+
+    proportion_ct_5prime = {i: ctp_5prime[i] / total_c_5prime[i] if total_c_5prime[i] > 0 else 0 for i in range(1, 16)}
+    proportion_ga_5prime = {i: gap_5prime[i] / total_g_5prime[i] if total_g_5prime[i] > 0 else 0 for i in range(1, 16)}
+    proportion_ct_3prime = {i: ctp_3prime[i] / total_c_3prime[i] if total_c_3prime[i] > 0 else 0 for i in range(1, 16)}
+    proportion_ga_3prime = {i: gap_3prime[i] / total_g_3prime[i] if total_g_3prime[i] > 0 else 0 for i in range(1, 16)}
+    proportion_other_5prime = {i: other_5prime[i] / total_nondeam_5prime[i] if total_nondeam_5prime[i] > 0 else 0 for i in range(1, 16)}
+    proportion_other_3prime = {i: other_3prime[i] / total_nondeam_3prime[i] if total_nondeam_3prime[i] > 0 else 0 for i in range(1, 16)}
+
+    return proportion_ct_5prime, proportion_ga_5prime, proportion_ct_3prime, proportion_ga_3prime, proportion_other_5prime, proportion_other_3prime
 
 
-def make_damage_plot(subs,tax,plotfile):
-    # just damage from the subs file; should be super fast 
+def make_damage_plot(subs, tax, plotfile, ymax=0):
+    # just damage from the subs file; should be super fast 
 
-    if matplotlib_imported == False:
-        print(f"Error: Cannot find matplotlib library for plotting. Try: pip install matplotlib")
+    if not matplotlib_imported:
+        print("Error: Cannot find matplotlib library for plotting. Try: pip install matplotlib")
         return
 
     with open(subs, 'r') as f:
@@ -836,56 +1107,59 @@ def make_damage_plot(subs,tax,plotfile):
         matched_line = [line for line in file_content if tax.lower() in line.lower()]  # check for capitalization error
         if len(matched_line) == 1:
             taxstring = matched_line[0].split('\t')[:2]
-            print(f"There was no exact match for your input tax string in the subs file, but a close match was found and will be used: {taxstring}")
+            print(f"No exact match for your input tax string in the subs file, but a close match was found and will be used: {taxstring}")
         else:
-            raise ValueError(f"No matching lines found for the given tax strings in the subs file.")
+            raise ValueError("No matching lines found for the given tax strings in the subs file.")
     elif len(matched_line) > 1:
-        raise ValueError("More than one matching line found. Please be more specific, e.g. by using a tax id instead of a name.")
+        raise ValueError("More than one matching line found. Please be more specific, e.g., by using a tax id instead of a name.")
 
     split_line = matched_line[0].split('\t')
     tax_id, tax_name, data_part = split_line[0], split_line[1], split_line[2]
     data_items = data_part.split()
 
+    ctp, gap_5prime, ctm, gap_3prime, other_5prime, other_3prime = calculate_damage_for_plot(data_items)
+
     positions = list(range(-15, 0)) + list(range(1, 16))
     values = {'Other': [0] * 30, 'CT': [0] * 30, 'GA': [0] * 30}
 
-    for item in data_items:
-        parts = item.split(":")
-        sub_type = parts[0]  
-        freq = float(parts[1])  
-        if "None" not in sub_type:  
-            sub_key = sub_type[:2]  
-            pos = int(sub_type[2:]) 
-            if -15 <= pos <= 15:
-                if sub_key in values:
-                    values[sub_key][positions.index(pos)] = freq
-                else:
-                    values['Other'][positions.index(pos)] += freq  #
+    for i in range(1, 16):
+        #  (5' end)
+        values['CT'][positions.index(i)] = ctp[i]
+        values['GA'][positions.index(i)] = gap_5prime[i]
+        values['Other'][positions.index(i)] = other_5prime[i]
+        
+        # (3' end)
+        values['CT'][positions.index(-i)] = ctm[i]
+        values['GA'][positions.index(-i)] = gap_3prime[i]
+        values['Other'][positions.index(-i)] = other_3prime[i]
 
-    max_y = max(max(values['Other']), max(values['CT']), max(values['GA'])) * 1.1
+    if ymax == 0 or ymax == "0":
+        max_y = min(1.0, max(max(values['Other']), max(values['CT']), max(values['GA'])) * 1.2 )
+    else:
+        max_y = float(ymax)
 
     plt.figure(figsize=(10, 5))
-    color_palette = {'Other': '#009E73', 'CT': '#F8766D', 'GA': '#56B4E9'}  # colorblind friendly!
+    color_palette = {'Other': '#009E73', 'CT': '#F8766D', 'GA': '#56B4E9'}  # colorblind-friendly palette
 
     ax1 = plt.subplot(1, 2, 1)
     for key in values:
         ax1.plot([str(pos) for pos in positions if pos > 0],
                  [values[key][i] for i, pos in enumerate(positions) if pos > 0],
-                 label=key, color=color_palette[key], linewidth=2) 
+                 label=key, color=color_palette[key], linewidth=2)
     ax1.set_ylim(0, max_y)
     ax1.set_xlabel('Position')
     ax1.set_ylabel('Frequency')
-    ax1.yaxis.set_ticks_position('left') 
+    ax1.yaxis.set_ticks_position('left')
     ax1.tick_params(right=False)
 
     ax2 = plt.subplot(1, 2, 2)
     for key in values:
         ax2.plot([str(pos) for pos in positions if pos < 0],
                  [values[key][i] for i, pos in enumerate(positions) if pos < 0],
-                 label=key, color=color_palette[key], linewidth=2)  
-    ax2.set_ylim(0, max_y)  
+                 label=key, color=color_palette[key], linewidth=2)
+    ax2.set_ylim(0, max_y)
     ax2.set_xlabel('Position')
-    ax2.yaxis.set_ticks_position('right')  
+    ax2.yaxis.set_ticks_position('right')
     ax2.tick_params(left=False)
     ax2.legend(labels=['Other', 'C to T', 'G to A'], loc='upper left')
 
@@ -897,10 +1171,12 @@ def make_damage_plot(subs,tax,plotfile):
         plt.savefig(plotfile, format='pdf')
     else:
         if file_extension != '.png':
-            print("Warning: Invalid plot file suffix. Your plot file is being saved in .png format with the filename you requested.")
-        plt.savefig(plotfile) 
+            print("Warning: Invalid plot file suffix. Your plot file is being saved in png format with the filename you requested.")
+        plt.savefig(plotfile)
 
     plt.close()
+
+
 
 def make_baminfo_plot(in_bam, plotfile):
 
@@ -1019,7 +1295,7 @@ def parse_exclude_keywords(args):
             with open(args.exclude_keyword_file, 'r') as f:
                 exclude_keywords.extend([line.strip() for line in f if line.strip()])
         
-        exclude_keywords = [kw.lstrip("'").lstrip('"').rstrip("'").rstrip('"') for kw in exclude_keywords] # strip quotes 
+        exclude_keywords = [kw.lstrip("'").lstrip('"').rstrip("'").rstrip('"') for kw in exclude_keywords] # strip quotes 
 
         formatted_keywords = []
         # good to surround the digit-only tax ids with a tab and a :, so we don't accidentally hit substring tax ids
@@ -1032,21 +1308,31 @@ def parse_exclude_keywords(args):
     else:
         return []
     
-
 def shrink(args):
     formatted_exclude_keywords = parse_exclude_keywords(args)
-    shortlcalines = write_shortened_lca(args.in_lca, args.out_lca, args.upto, args.mincount, formatted_exclude_keywords)
+    lca_file_type = find_lca_type(args.in_lca)
+    if(lca_file_type == "metadmg"):
+        print("You are running bamdam shrink with a metadmg-style lca file. This is ok, but be aware the output lca file will be in ngsLCA lca file format.")
+    shortlcalines = write_shortened_lca(args.in_lca, args.out_lca, args.upto, args.mincount, formatted_exclude_keywords, lca_file_type)
     write_shortened_bam(args.in_bam, args.out_lca, args.out_bam, args.stranded, args.minsim, args.annotate_pmd, shortlcalines)
 
 def compute(args):
+    lca_file_type = find_lca_type(args.in_lca)
+    if(lca_file_type == "metadmg"):
+        print("Error: It looks like you're trying to run bamdam compute with a metadmg-style lca file. Please use an ngsLCA-style lca file.")
+        sys.exit()
     nodedata, pmds_in_bam = gather_subs_and_kmers(args.in_bam, args.in_lca, kn=args.k, upto=args.upto, stranded=args.stranded)
     parse_and_write_node_data(nodedata, args.out_tsv, args.out_subs, args.stranded, pmds_in_bam)  
 
 def extract(args):
-    extract_reads(args.in_lca, args.in_bam, args.out_bam, args.keyword)
+    lca_file_type = find_lca_type(args.in_lca)
+    if(lca_file_type == "metadmg"):
+        print("Error: It looks like you're trying to run bamdam extract with a metadmg-style lca file. Please use an ngsLCA-style lca file.")
+        sys.exit()
+    extract_reads(args.in_lca, args.in_bam, args.out_bam, args.keyword, args.subset_header, args.only_top_ref)
 
 def plotdamage(args):
-    make_damage_plot(args.in_subs, args.tax, args.outplot)
+    make_damage_plot(args.in_subs, args.tax, args.outplot, args.ymax)
 
 def plotbaminfo(args):
     make_baminfo_plot(args.in_bam, args.outplot)
@@ -1091,6 +1377,8 @@ def main():
     parser_extract.add_argument("--in_lca", type=str, required=True, help="Path to the LCA file (required)")
     parser_extract.add_argument("--out_bam", type=str, required=True, help="Path to the filtered BAM file (required)")
     parser_extract.add_argument("--keyword", type=str, required=True, help="Keyword or phrase to filter for, e.g. a taxonomic node ID (required)")
+    parser_extract.add_argument("--subset_header", action='store_true', help="Subset the header to only relevant references (default: not set)")
+    parser_extract.add_argument("--only_top_ref", action='store_true', help="Only keep alignments to the most-hit reference (default: not set)")
     parser_extract.set_defaults(func=extract)
 
     # Plot damage
@@ -1098,6 +1386,7 @@ def main():
     parser_plotdamage.add_argument("--in_subs", type=str, required=True, help="Path to the subs file produced by bamdam compute (required)")
     parser_plotdamage.add_argument("--tax", type=str, required=True, help="Taxonomic node ID (required)")
     parser_plotdamage.add_argument("--outplot", type=str, default="damage_plot.png", help="Filename for the output plot, ending in .png or .pdf (default: damage_plot.png)")
+    parser_plotdamage.add_argument("--ymax", type=str, default="0", help="Maximum for y axis (optional)")
     parser_plotdamage.set_defaults(func=plotdamage)
 
     # Plot bam info
@@ -1134,7 +1423,7 @@ def main():
     if hasattr(args, 'upto') and args.upto=="clade":
         parser.error(f"Clade is not a valid taxonomic level in bamdam because there can be multiple clades in one taxonomic path.")
     if hasattr(args, 'upto') and args.upto != args.upto.lower():
-        parser.warning(f"Warning: {args.upto} as provided is not in lowercase. Converting to lowercase and moving on.")
+        parser.warning(f"Warning: {args.upto} as provided is not in lowercase, but it should be. Converting to lowercase and moving on.")
         args.upto = args.upto.lower()
     
     if hasattr(args, 'in_bam') and args.command != "plotbaminfo":
@@ -1189,3 +1478,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
