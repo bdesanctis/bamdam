@@ -35,7 +35,7 @@ Bamdam is a post-mapping, post-least-common-ancestor toolkit for environmental D
 
 The main two functions are bamdam **shrink** and bamdam **compute**. When mapping against large reference databases, the output bam files will often be huge and contain mostly irrelevant alignments; the reads with the most alignments are usually those assigned to uninformative taxonomic nodes (e.g. "Viridiplantae:kingdom"). Bamdam shrink produces a much smaller bam (and associated lca file) which still contains all informative alignments. Bamdam compute then takes in a (shrunken) bam and lca file and produces a large table in tsv format with one row per taxonomic node, including authentication metrics such as k-mer duplicity and mean read complexity. Users can then set their own filtering thresholds to decide which taxa look like real taxa rather than contaminants. 
 
-There are also some accessory functions. Bamdam **extract** is a basic wrapper function that extracts reads assigned to a specific taxonomic node from a bam file into another bam file for downstream analyses. Bamdam **plotdamage** uses the subs file, a secondary output from bamdam compute, to quickly produce a postmortem damage "smiley" plot for a specified taxonomic node in the case of ancient DNA. Bamdam **plotbaminfo** takes a bam file as input (e.g. from bamdam extract), and plots the mismatch and read length distributions. 
+There are also some accessory functions. Bamdam **extract** extracts reads assigned to a specific taxonomic node from a bam file into another bam file for downstream analyses. Bamdam **plotdamage** uses the subs file, a secondary output from bamdam compute, to quickly produce a postmortem damage "smiley" plot for a specified taxonomic node in the case of ancient DNA. Bamdam **plotbaminfo** takes a bam file as input (e.g. from bamdam extract), and plots the mismatch and read length distributions. 
 
 Bamdam is not particularly optimized for speed, and doesn't support threading (much of the effort is spent on bam file I/O). On the other hand, it reads and writes bams line-by-line, so it shouldn't need too much RAM. 
 
@@ -77,7 +77,7 @@ Bamdam shrink will also optionally annotate the new bam file with PMD scores as 
 
 ### <a name="compute"></a>bamdam compute
 
-Input: Read-sorted bam and associated lca file. Output: Tsv file and subs file.
+Input: Read-sorted bam and associated lca file (both from bamdam shrink output). Output: Tsv file and subs file.
 
 ```
 usage: bamdam compute [-h] --in_bam IN_BAM --in_lca IN_LCA --out_tsv OUT_TSV --out_subs OUT_SUBS --stranded STRANDED [--options]
@@ -100,17 +100,15 @@ Full list of the output tsv columns:
 - **TotalReads**: The number of reads assigned to that node or underneath.
 - **Duplicity**: The average number of times a k-mer has been seen, where the k-mers are from reads assigned to that node or underneath. Should be close to 1 unless coverage is high.
 - **MeanDust**: The average DUST score for reads assigned to that node or underneath.
-- **Damaged+1**: The actual proportion of reads assigned to that node or underneath where every alignment of that read had a C->T on the 5' (+1) position.
-- **Damaged-1**: The actual proportion of reads assigned to that node or underneath where every alignment of that read had a C->T if single stranded, or a G->A if double stranded, on the 3' (-1) position.
+- **Damage+1**: The actual proportion of reads assigned to that node or underneath where every alignment of that read had a C->T on the 5' (+1) position.
+- **Damage-1**: The actual proportion of reads assigned to that node or underneath where every alignment of that read had a C->T if single stranded, or a G->A if double stranded, on the 3' (-1) position.
 - **MeanLength**: The mean length of the reads assigned to that node or underneath.
-- **Div**: The mean divergence for that node, not including any C>T or G>A transitions.
 - **ANI**: Average nucleotide identity of the reads assigned to that node or underneath. 
-- **AvgGC**: Average GC content of the reads assigned to that node or underneath.
-- **ND+1**: Normalized damage +1: The proportion of reads assigned to that node or underneath with a C->T on the 5' (+1) position, minus the mean (non C>T or G>A) divergence for that node.
-- **ND-1**: Normalized damage -1: The proportion of reads assigned to that node or underneath with a C->T if single stranded, or a G->A if double stranded, on the 3' (-1) position, minus the mean (non C>T or G>A) divergence for that node.
+- **AvgReadGC**: Average GC content of the reads assigned to that node or underneath.
+- **AvgRefGC**: Average GC content of the reconstructed reference genomic intervals with mapped reads assigned to that node or underneath.
 - **UniqueKmers**: The number of unique k-mers in the reads assigned to that node or underneath.
 - **TotalAlignments**: Sum of the number of alignments for all the reads assigned to that node or underneath.
-- **taxpath**: The taxonomic path from the lca file.
+- **taxpath**: The full taxonomic path from the lca file.
 
 If the input bam file was annotated with PMD scores, the tsv file will also contain columns **PMDSOver2** and **PMDSOver4**, indicating the proportion of PMD scores over 2 and 4 respectively. PMD scores are from [Skoglund et al. 2014](https://doi.org/10.1073/pnas.131893411). 
 
@@ -120,10 +118,19 @@ Bamdam compute aggregates statistics up the taxonomy and outputs rows for all ta
 
 ### <a name="extract"></a>bamdam extract
 
-A straightforward bash wrapper function to extract reads assigned to a specific taxonomic node from a bam file. Output is another bam file. Not very fast (bam i/o is slow). Accepts tax IDs or full tax strings.
+Extracts reads assigned to a specific taxonomic node or underneath from a bam file. Output is another bam file. Accepts tax IDs or full tax strings. Subsetting the header is recommended but slower, so not set by default. Optionally, you can only include alignments to the most-hit reference genome to obtain a single-reference-genome bam (this requires both --only_top_ref and --subset_header).
 
 ```
-./bamdam extract --in_bam IN_BAM --in_lca IN_LCA --keyword KEYWORD --out_bam OUT_BAM
+usage: bamdam extract [-h] --in_bam IN_BAM --in_lca IN_LCA --out_bam OUT_BAM --keyword KEYWORD [--subset_header] [--only_top_ref]
+
+options:
+  -h, --help         show this help message and exit
+  --in_bam IN_BAM    Path to the BAM file (required)
+  --in_lca IN_LCA    Path to the LCA file (required)
+  --out_bam OUT_BAM  Path to the filtered BAM file (required)
+  --keyword KEYWORD  Keyword or phrase to filter for, e.g. a taxonomic node ID (required)
+  --subset_header    Subset the header to only relevant references (default: not set)
+  --only_top_ref     Only keep alignments to the most-hit reference (default: not set)
 ```
 
 ### <a name="plotdamage"></a>bamdam plotdamage
@@ -153,16 +160,15 @@ Example output:
 
 ## <a name="tutorial"></a>Tutorial
 
-We will analyze a small portion of an unpublished ancient metagenomic DNA sample from China, prepared with double stranded library prep. The bam file has previously been query-sorted and subsetted. It may take a few minutes to download files. 
+You can follow this tutorial on a laptop. We will analyze a small portion of an unpublished ancient metagenomic DNA sample from China, prepared with double stranded library prep. The bam file has previously been query-sorted, subsetted, and run through ngsLCA. It may take a few minutes to download files. 
 ```
 wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/CGG3_015421.lca
 wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/CGG3_015421.sub_sorted.bam
 ```
-
 Running the main bamdam commands may take another few minutes.
 ```
-bamdam shrink --in_bam CGG3_015421.sub_sorted.bam --in_lca CGG3_015421.lca --out_bam CGG3.small.bam --out_lca CGG3.small.lca --stranded ds
-bamdam compute --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_tsv CGG3.tsv --out_subs CGG3.subs.txt --stranded ds
+./bamdam shrink --in_bam CGG3_015421.sub_sorted.bam --in_lca CGG3_015421.lca --out_bam CGG3.small.bam --out_lca CGG3.small.lca --stranded ds
+./bamdam compute --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_tsv CGG3.tsv --out_subs CGG3.subs.txt --stranded ds
 ```
 Now you can look at your output files and see what's in there. The tsv is ordered by read count.
 ```
@@ -170,14 +176,23 @@ head CGG3.tsv
 ```
 Looks like the top hit is the plant subfamily Myrtoideae, with tax ID 1699513. This looks real and ancient: k-mer duplicity close to 1, sufficiently low mean DUST score, high amounts of damage on both ends, short read length, etc. Next let's plot damage for this taxa.
 ```
-bamdam plotdamage --in_subs CGG3.subs.txt --tax 1699513 --outplot CGG3_Myrtoidae_damageplot.png
+./bamdam plotdamage --in_subs CGG3.subs.txt --tax 1699513 --outplot CGG3_Myrtoidae_damageplot.png
 ```
-Lastly let's pull out the associated reads, and plot the mismatch and read length distributions.
+Now let's pull out the associated reads associated with this and plot the mismatch and read length distributions for all Myrtoideae reads. 
 ```
-bamdam extract --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_bam CGG3.Myrtoideae.bam --keyword 1699513
-bamdam plotbaminfo --in_bam CGG3.Myrtoideae.bam --outplot CGG3_Myrtoideae_baminfo.png
+./bamdam extract --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_bam CGG3.Myrtoideae.bam --keyword 1699513
+./bamdam plotbaminfo --in_bam CGG3.Myrtoideae.bam --outplot CGG3_Myrtoideae_baminfo.png
 ```
-Your plots should match those shown as examples above in this github repo. 
+Lastly, we might want to investigate reference-specific properties like evenness of coverage. Let's extract only those Myrtoidae reads which hit the most common Myrtoidae reference. This might take a minute.
+```
+./bamdam extract --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_bam CGG3.MyrtoideaeTopRef.bam --keyword 1699513 --subset_header --only_top_ref
+```
+The command-line output tells you the most common reference genome, NW_026607485.1. As an example of a potential downstream step, let's download this reference, coordinate-sort the bam, and make a samtools command-line reference-specific coverage plot. This requires samtools.
+```
+wget "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nucleotide&id=NW_026607485.1&rettype=fasta&retmode=text" -O NW_026607485.1.fasta
+samtools sort CGG3.MyrtoideaeTopRef.bam > CGG3.MyrtoideaeTopRefSorted.bam
+samtools coverage CGG3.MyrtoideaeTopRefSorted.bam -m
+```
 
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.
