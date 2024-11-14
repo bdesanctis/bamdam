@@ -178,7 +178,7 @@ Looks like the top hit is the plant subfamily Myrtoideae, with tax ID 1699513. T
 ```
 ./bamdam plotdamage --in_subs CGG3.subs.txt --tax 1699513 --outplot CGG3_Myrtoidae_damageplot.png
 ```
-Now let's pull out the associated reads associated with this and plot the mismatch and read length distributions for all Myrtoideae reads. 
+Now let's plot the mismatch and read length distributions for all Myrtoideae reads. 
 ```
 ./bamdam extract --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_bam CGG3.Myrtoideae.bam --keyword 1699513
 ./bamdam plotbaminfo --in_bam CGG3.Myrtoideae.bam --outplot CGG3_Myrtoideae_baminfo.png
