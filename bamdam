@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # bamdam by Bianca De Sanctis, bddesanctis@gmail.com  
-# last updated nov 14 2024
+# last updated dec 2 2024
 
 import sys 
 import re
@@ -116,11 +116,12 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
                         keepgoing = True; field = 0
                         while keepgoing:
                             taxid = fields[field].split(':')[0]
+                            taxlevel = fields[field].split(':')[2]
                             if taxid in number_counts:
                                 number_counts[taxid] += 1
                             else:
                                 number_counts[taxid] = 1
-                            if upto in fields[field]:
+                            if upto in taxlevel and f"sub{upto}" not in taxlevel: # careful, there is family and there is also subfamily for example, and you wanna get it right
                                 keepgoing = False
                             field +=1 
 
@@ -153,8 +154,8 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
                         elif lca_file_type == "metadmg":
                             fields = entry[6].split(';')
                         for field in fields:
-                            if f":{upto}" in field or f':"{upto}"' in field or f":'{upto}'" in field:
-                                # ^ metadmg lca files like to put quotation marks everywhere; try to deal with this 
+                            if (f":{upto}" in field or f':"{upto}"' in field or f":'{upto}'" in field):
+                                # ^ metadmg lca files like to put quotation marks everywhere; try to deal with this while also getting family and not subfamily
                                 number = field.split(':')[0]
                                 if number in goodnodes:
                                     if lca_file_type == "ngslca":
@@ -663,7 +664,7 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
             fields = lcaentry[1:]
             nodestodumpinto = []
             for i in range(len(fields)):
-                if upto in fields[i]:
+                if (f":{upto}" in fields[i] or f':"{upto}"' in fields[i] or f":'{upto}'" in fields[i]):
                     # gotta be the last one! 
                     nodestodumpinto.append(fields[i].split(':')[0])
                     break
@@ -868,10 +869,10 @@ def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_b
     subsfile = open(subs_path, 'w', newline='')
     if pmds_in_bam:
         header = ['TaxNodeID', 'TaxName', 'TotalReads','Duplicity', 'MeanDust','Damage+1', 'Damage-1','MeanLength', 'ANI','AvgReadGC','AvgRefGC',
-                   'UniqueKmers', 'TotalAlignments', 'PMDsover2', 'PMDSover4','taxpath'] 
+                   'UniqueKmers', 'RatioDupKmers', 'TotalAlignments', 'PMDsover2', 'PMDSover4','taxpath'] 
     else:
         header = ['TaxNodeID', 'TaxName', 'TotalReads','Duplicity', 'MeanDust','Damage+1', 'Damage-1','MeanLength', 'ANI','AvgReadGC','AvgRefGC',
-                   'UniqueKmers', 'TotalAlignments', 'taxpath'] 
+                   'UniqueKmers', 'RatioDupKmers', 'TotalAlignments', 'taxpath'] 
     statsfile.write('\t'.join(header) + '\n')
     writer = csv.writer(statsfile, delimiter='\t', quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
     subswriter = csv.writer(subsfile, delimiter='\t', quotechar='"', quoting=csv.QUOTE_NONE)
@@ -889,8 +890,10 @@ def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_b
         numuniquekmers = len(tn['hll'])
         if numuniquekmers > 0:
             duplicity = tn['totalkmers'] / numuniquekmers
+            ratiodup = (tn['totalkmers'] - numuniquekmers) / tn['totalkmers']
         else:
             duplicity = 0
+            ratiodup = 0
 
         taxname = tn['tax_path'].split(",")[0].split(":")[1]
 
@@ -902,15 +905,15 @@ def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_b
 
         # write 
         if pmds_in_bam:
-            row = [int(node), taxname, tn['total_reads'], round(duplicity, 2), round(tn['avgdust'], 2), 
+            row = [int(node), taxname, tn['total_reads'], round(duplicity, 3), round(tn['avgdust'], 2), 
                    round(dp1, 4), round(dm1, 4), 
-                   round(tn['meanlength'], 2),  round(tn['ani'], 4), round(tn['avgreadgc'], 3),round(avgrefgc, 3),
+                   round(tn['meanlength'], 2),  round(tn['ani'], 4), round(tn['avgreadgc'], 3),round(avgrefgc, 3), numuniquekmers, round(ratiodup,3),
                    round(tn['pmdsover2'] / tn['total_reads'], 3), round(tn['pmdsover4'] / tn['total_reads'], 3), tn['tax_path']]
         else:
             row = [int(node), taxname, tn['total_reads'], round(duplicity, 2), round(tn['avgdust'], 2), 
                    round(dp1, 4), round(dm1, 4), 
                    round(tn['meanlength'], 2),  round(tn['ani'], 4), round(tn['avgreadgc'], 3),round(avgrefgc, 3),
-                   numuniquekmers, tn['total_alignments'], tn['tax_path']]
+                   numuniquekmers, round(ratiodup,3), tn['total_alignments'], tn['tax_path']]
         rows.append(row)
 
         subsrows[int(node)] = [int(node), taxname, fsubs]
@@ -939,7 +942,7 @@ def extract_reads(in_lca, in_bam, out_bam, tax, subset_header = False, only_top_
 
     # parse keyword.
     # if you gave in a tax id as a digit, you probably are referring to the tax id and don't want to also get paths with the keyword as a substring of another tax id (eg you gave 200 and you get 2001)
-    tax_pattern = f"\\t{tax}:" if tax.isdigit() else tax
+    tax_pattern = f"[[:space:]]{tax}:" if tax.isdigit() else tax
 
     # if you don't need to subset the header and you're happy with keeping all the refs, this is easy.
     # in this case, the fastest way to do this is to pass samtools a file of read names. 
