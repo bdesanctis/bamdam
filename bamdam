@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # bamdam by Bianca De Sanctis, bddesanctis@gmail.com  
-# last updated dec 2 2024
+# last updated dec 14 2024
 
 import sys 
 import re
@@ -100,30 +100,29 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
             next(file) 
         for line in file:
             if upto in line:
-                # if exclude_under and any(keyword in line for keyword in exclude_keywords): # checks all nodes in the path 
-                #     continue
-                    # if you want to exclude all nodes underneath the ones you specified too, all you have to do is look for all the keywords in every line 
-                # else: 
                 entry = line.strip().split('\t')
                 if len(entry) > 1:  
                     if lca_file_type=="ngslca":
                         fields = entry[1:] # can ditch the read id 
                     elif lca_file_type=="metadmg":
                         fields = entry[6].split(';')
-                    if exclude_keywords and any(keyword in fields[0] for keyword in exclude_keywords):
-                        continue # this only checks the node the read is actually assigned to 
-                    else:
-                        keepgoing = True; field = 0
-                        while keepgoing:
-                            taxid = fields[field].split(':')[0]
-                            taxlevel = fields[field].split(':')[2]
-                            if taxid in number_counts:
-                                number_counts[taxid] += 1
-                            else:
-                                number_counts[taxid] = 1
-                            if upto in taxlevel and f"sub{upto}" not in taxlevel: # careful, there is family and there is also subfamily for example, and you wanna get it right
-                                keepgoing = False
-                            field +=1 
+                    if exclude_keywords:
+                        # go check if you need to skip this line
+                        matching_keywords = [keyword for keyword in exclude_keywords if fields[0].startswith(keyword)]
+                        if len(matching_keywords)>0:
+                            continue # this only checks the node the read is actually assigned to 
+                    # moving on
+                    keepgoing = True; field = 0
+                    while keepgoing:
+                        taxid = fields[field].split(':')[0]
+                        taxlevel = fields[field].split(':')[2]
+                        if taxid in number_counts:
+                            number_counts[taxid] += 1
+                        else:
+                            number_counts[taxid] = 1
+                        if upto in taxlevel and f"sub{upto}" not in taxlevel: # careful, there is family and there is also subfamily for example, and you wanna get it right
+                            keepgoing = False
+                        field +=1 
 
     goodnodes = [key for key, count in number_counts.items() if count >= mincount]
     # these are the nodes that have at least the min count of reads assigned to them (or below them), and which are at most upto
@@ -144,8 +143,11 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
                     exit(-1)
                 if upto in line:
                     # you can just go straight to the upto level and check if that node has high enough count 
-                    if exclude_keywords and any(keyword in entry[1] for keyword in exclude_keywords):
-                        continue # don't keep the ones that have the keywords in their exact assignment 
+                    if exclude_keywords:
+                        # go check if you need to skip this line
+                        matching_keywords = [keyword for keyword in exclude_keywords if fields[0].startswith(keyword)]
+                        if len(matching_keywords)>0:
+                            continue # this only checks the node the read is actually assigned to
                     else:
                         entry = line.strip().split('\t')
                     if len(entry) > 1:  
@@ -177,8 +179,7 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
 def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded,minsimilarity,annotate_pmd,totallcalines): 
     # runs through the existing bam and the new short lca file at once, and writes only lines to the new bam which are represented in the short lca file
     # does two passes, the first of which makes a shortened header as well and adds the command str to the end of the bam header
-    # also annotates with (correct!) pmd scores as it goes - the original pmdtools has a bug for single stranded libraries
-
+    # also annotates with pmd scores as it goes
     # now takes in minsimilarity as a percentage, and will keep reads w/ equal to or greater than NM flag to this percentage 
 
     if tqdm_imported:
@@ -363,7 +364,7 @@ def mismatch_table(read,cigar,md,flagsum):
         # this will skip indels; eg C->"-" should not be counted in the damage denominator
 
     # some processing: first, figure out if it's forward or backwards
-    # second field of a bam is called a flagsum and it parses like this (see eg bowtie2 manual)
+    # second field of a bam is a flagsum and it parses like this (see eg bowtie2 manual)
     bin_flagsum = bin(flagsum)[::-1]
     bit_position = 4 #  2^4 = 16 this flag means it's aligned in reverse
     backwards = len(bin_flagsum) > bit_position and bin_flagsum[bit_position] == '1' 
@@ -391,7 +392,7 @@ def mismatch_table(read,cigar,md,flagsum):
     else:
         mmsc = mms
         matchsc = matchs
-    # now everything EXCEPT unmerged but retained reverse mate pairs of paired end reads (which i should still try to catch later; maybe to do), should be 5' -> 3' 
+    # now accounts for everything EXCEPT unmerged but retained reverse mate pairs of paired end reads (which i should still try to catch later; maybe to do), should be 5' -> 3' 
 
     # mirroring for accurate cumulative damage counting later (end of read becomes -1, -2...)
     for entry in range(0,len(mmsc)): # mismatches
@@ -636,7 +637,7 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
         # get the basic info for this read
         readname = read.query_name
 
-        # immediately find out if it's a new read. if so, you JUST finished the last read, so do a bunch of stuff for it. 
+        # find out if it's a new read. if so, you just finished the last read, so do a bunch of stuff for it. 
         # the first read will skip this if statement because of the second condition
         if readname != oldreadname and oldreadname != "":
 
@@ -893,6 +894,10 @@ def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_b
             ratiodup = (tn['totalkmers'] - numuniquekmers) / tn['totalkmers']
         else:
             duplicity = 0
+            ratiodup = 0
+        if ratiodup < 0 :
+            # you can get tiny negative numbers from essentially zero duplicity and error 
+            # (there is up to 1% error in the uniq kmer counting)
             ratiodup = 0
 
         taxname = tn['tax_path'].split(",")[0].split(":")[1]
@@ -1299,17 +1304,18 @@ def parse_exclude_keywords(args):
                 exclude_keywords.extend([line.strip() for line in f if line.strip()])
         
         exclude_keywords = [kw.lstrip("'").lstrip('"').rstrip("'").rstrip('"') for kw in exclude_keywords] # strip quotes 
-
+        
         formatted_keywords = []
-        # good to surround the digit-only tax ids with a tab and a :, so we don't accidentally hit substring tax ids
+        # good to surround the digit-only tax ids with a :, so we don't accidentally hit substring tax ids
         for keyword in exclude_keywords:
             if keyword.isdigit():
-                keyword = f"\\t{keyword}:"
+                keyword = f"{keyword}:"
             formatted_keywords.append(keyword)
-        
+
         return formatted_keywords
     else:
         return []
+    
     
 def shrink(args):
     formatted_exclude_keywords = parse_exclude_keywords(args)
@@ -1425,6 +1431,8 @@ def main():
         parser.error(f"Input BAM path does not exist: {args.in_bam}")
     if hasattr(args, 'upto') and args.upto=="clade":
         parser.error(f"Clade is not a valid taxonomic level in bamdam because there can be multiple clades in one taxonomic path.")
+    if hasattr(args, 'upto') and "sub" in args.upto:
+        parser.error(f"The taxonomic level cannot start with 'sub' (eg subfamily, subphylum) because this is inconsistently defined in taxonomy (not all species belong to a subfamily, but they all belong to a family).") 
     if hasattr(args, 'upto') and args.upto != args.upto.lower():
         parser.warning(f"Warning: {args.upto} as provided is not in lowercase, but it should be. Converting to lowercase and moving on.")
         args.upto = args.upto.lower()
