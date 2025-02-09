@@ -182,6 +182,19 @@ Example output:
 <img src="example/CGG3_Myrtoideae_baminfo.png" width="600">
 </p>
 
+### <a name="plotbaminfo"></a>bamdam plotbaminfo
+
+Plots mismatch and read length distributions. Mostly intended to be used after bamdam extract. Not very fast for large input bam. Produces png or pdf.
+
+```
+./bamdam plotbaminfo --in_bam IN_BAM --outplot OUTPLOT
+```
+
+Example output:
+<p align="center">
+<img src="example/CGG3_Myrtoideae_baminfo.png" width="600">
+</p>
+
 ### <a name="krona"></a>bamdam krona
 
 Converts one or more tsv files (from bamdam compute) to an XML file formatted for [KronaTools](https://github.com/marbl/Krona). Output includes damage, dust and duplicity for each taxa for each sample, and the pie wedges of the Krona plot can be coloured by their 5' damage. Will also compute a summary Krona plot if the input is more than one file, with total reads per taxa and mean read-weighted damage values. 
