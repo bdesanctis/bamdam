@@ -227,7 +227,7 @@ Running the main bamdam commands may take another few minutes.
 ./bamdam shrink --in_bam CGG3_015421.sub_sorted.bam --in_lca CGG3_015421.lca --out_bam CGG3.small.bam --out_lca CGG3.small.lca --stranded ds
 ./bamdam compute --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_tsv CGG3.tsv --out_subs CGG3.subs.txt --stranded ds
 ```
-The bam didn't get much smaller because this is a toy example. Now you can look at your output files and see what's in there. The tsv is ordered by read count.
+Now you can look at your output files and see what's in there. The tsv is ordered by read count.
 ```
 head CGG3.tsv
 ```
@@ -258,7 +258,7 @@ wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/microbes_control.tsv
 ```
 We can combine multiple files into a single matrix. This will output the tax name, total reads, read-weighted mean damage, and per-sample per-taxa damage, duplicity and dust. 
 ```
-ls microbes_* > input_list.txt
+ls microbes* > input_list.txt
 ./bamdam combine --in_tsv_list input_list.txt --out_tsv microbes_combined.tsv
 head microbes_combined.tsv
 ```
@@ -267,7 +267,7 @@ Lastly we create a set of interactive, damage-coloured Krona plots by converting
 ./bamdam krona --in_tsv_list input_list.txt --out_xml microbes.xml
 ktImportXML -o microbes.html microbes.xml
 ```
-Once you get the html file, you can open it in any web browser. Make sure to click "Colour by damage" in the bottom left.
+Once you get the html file, you can open it in any web browser. Make sure to click "Colour by damage" in the bottom left!
 
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.
