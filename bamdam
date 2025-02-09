@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # bamdam by Bianca De Sanctis, bddesanctis@gmail.com  
-# last updated dec 14 2024
+# last updated feb 7 2025
 
 import sys 
 import re
@@ -22,6 +22,8 @@ try: # optional library for progress bars
     tqdm_imported = True
 except ImportError:
     tqdm_imported = False
+
+level_order = ["superkingdom", "kingdom", "phylum", "class", "order", "family", "subfamily", "genus", "subgenus", "species", "subspecies"]
 
 def get_sorting_order(file_path):
     # bamdam needs query / read sorted bams
@@ -99,7 +101,7 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
         for _ in range(lcaheaderlines):
             next(file) 
         for line in file:
-            if upto in line:
+            if upto in line: 
                 entry = line.strip().split('\t')
                 if len(entry) > 1:  
                     if lca_file_type=="ngslca":
@@ -108,21 +110,23 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
                         fields = entry[6].split(';')
                     if exclude_keywords:
                         # go check if you need to skip this line
-                        matching_keywords = [keyword for keyword in exclude_keywords if fields[0].startswith(keyword)]
+                        matching_keywords = [keyword for keyword in exclude_keywords if fields[0].split(":")[0].strip("'").strip('"') == keyword]
                         if len(matching_keywords)>0:
                             continue # this only checks the node the read is actually assigned to 
                     # moving on
-                    keepgoing = True; field = 0
-                    while keepgoing:
-                        taxid = fields[field].split(':')[0]
-                        taxlevel = fields[field].split(':')[2]
-                        if taxid in number_counts:
-                            number_counts[taxid] += 1
-                        else:
-                            number_counts[taxid] = 1
-                        if upto in taxlevel and f"sub{upto}" not in taxlevel: # careful, there is family and there is also subfamily for example, and you wanna get it right
-                            keepgoing = False
-                        field +=1 
+                    # now explicitly check if upto is in the line on its own (e.g. we see "family", not just "subfamily" - yes this can happen rarely and weirdly and we will not include them)
+                    if any(item.split(":")[2].strip("'").strip('"') == upto for item in fields):
+                        keepgoing = True; field = 0
+                        while keepgoing:
+                            taxid = fields[field].split(':')[0].strip("'").strip('"')
+                            taxlevel = fields[field].split(':')[2].strip("'").strip('"')
+                            if taxid in number_counts:
+                                number_counts[taxid] += 1
+                            else:
+                                number_counts[taxid] = 1
+                            if taxlevel == upto:
+                                keepgoing = False
+                            field +=1 
 
     goodnodes = [key for key, count in number_counts.items() if count >= mincount]
     # these are the nodes that have at least the min count of reads assigned to them (or below them), and which are at most upto
@@ -139,27 +143,25 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
                 elif lca_file_type == "metadmg":
                     newreadname = line[:tab_split]
                 if newreadname == oldreadname:
-                    print("Error: You have duplicate entries in your LCA file, for example " + newreadname + ". You should fix this and re-run BamDam. Here is a suggested fix: awk '!seen[$0]++' input_lca > deduplicated_lca")
+                    print("Error: You have duplicate entries in your LCA file, for example " + newreadname + ". You should fix this and re-run bamdam. Here is a suggested fix: awk '!seen[$0]++' input_lca > deduplicated_lca")
                     exit(-1)
-                if upto in line:
-                    # you can just go straight to the upto level and check if that node has high enough count 
-                    if exclude_keywords:
-                        # go check if you need to skip this line
-                        matching_keywords = [keyword for keyword in exclude_keywords if fields[0].startswith(keyword)]
-                        if len(matching_keywords)>0:
-                            continue # this only checks the node the read is actually assigned to
-                    else:
-                        entry = line.strip().split('\t')
+                if upto in line: 
+                    entry = line.strip().split('\t')
                     if len(entry) > 1:  
                         if lca_file_type == "ngslca":
                             fields = entry[1:] 
                         elif lca_file_type == "metadmg":
                             fields = entry[6].split(';')
+                        if exclude_keywords:
+                            # go check if you need to skip this line
+                            matching_keywords = [keyword for keyword in exclude_keywords if fields[0].split(":")[0].strip("'").strip('"') == keyword]
+                            if len(matching_keywords)>0:
+                                continue # this only checks the node the read is actually assigned to 
                         for field in fields:
-                            if (f":{upto}" in field or f':"{upto}"' in field or f":'{upto}'" in field):
-                                # ^ metadmg lca files like to put quotation marks everywhere; try to deal with this while also getting family and not subfamily
-                                number = field.split(':')[0]
-                                if number in goodnodes:
+                            number = field.split(':')[0].strip("'").strip('"') # metadmg lca files can have quotation marks everywhere
+                            level = field.split(':')[2].strip("'").strip('"')
+                            if level == upto:
+                                if number in goodnodes: # you only need to check the upto counts, as they will be higher than anything underneath them 
                                     if lca_file_type == "ngslca":
                                         outfile.write(line)
                                     elif lca_file_type == "metadmg":
@@ -197,8 +199,8 @@ def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded
     currentlcaline = lcaheaderlines
 
     with pysam.AlignmentFile(original_bam_path, "rb", check_sq=False, require_index=False) as infile, \
-         pysam.AlignmentFile(short_bam_path, "wb", header=infile.header) as outfile, \
-         open(short_lca_path, 'r') as shortlcafile:
+        pysam.AlignmentFile(short_bam_path, "wb", header=infile.header) as outfile, \
+        open(short_lca_path, 'r') as shortlcafile:
 
         for _ in range(lcaheaderlines): 
             lcaline = next(shortlcafile)
@@ -269,28 +271,48 @@ def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded
 
 def get_mismatches(seq, cigar, md):  
     # parses a read, cigar and md string to determine mismatches and positions. 
-    # does not output info on insertions/deletions but accounts for them.
+    # does not output info on insertions/deletions, but accounts for them.
     # thanks jonas oppenheimer who wrote half of this function :)
 
     # goes in two passes: once w/ cigar and once w/ md 
+
+    # the strategy is to reconstruct the alignment through the cigar string first, so read_seq and ref_seq are the same length
+    # but might have "-"s and "N"s floating around, and next to inform the substitutions from the md string 
 
     cig = re.findall(r'\d+\D', cigar)
     md_list = re.compile(r'\d+|\^[A-Za-z]+|[A-Za-z]').findall(md)
 
     ref_seq = ''
     read_seq = ''
-    query_pos = 0 # indexes the ref reconstruction
+    query_pos = 0 # indexes the ref reconstruction (which might have "-"s or "N"s added if there is soft clipping, indels etc)
     read_pos = 0 # indexes the read reconstruction (which is the input read but with potential added "-"s if the ref has insertions)
     for x in cig:
         cat = x[-1]
-        if cat in ['H', 'P']: # doesn't consume reference or query
+        if cat == 'H': # doesn't consume reference or query
+            print(f"Warning: You have cigar strings have Hs in them (hard clipping). These specific reads may not be parsed correctly")
             continue
+            # ! i've never actually seen these in a cigar string so i'm not 100% sure this works
 
         bases = int(x[:-1])
 
-        if cat == 'S': # soft clip
-            read_seq += seq[read_pos:read_pos + bases] # include the bases in the reconstructed read 
-            # this includes soft clipped by default - edit this if you don't want to do this 
+        if cat == 'S': # soft clip: bases are present in the read, but not the reference. soft clipping is enabled by default in bwa but not bowtie2.
+            # pad the reference with "-"s and keep the whole read (to get the positions right).
+            # add to the md_list to deal with this manually below (md tags do not record soft clipped regions)
+            md_extra = "softclip"+str(bases)
+            if x == cig[len(cig)-1]: # the end of the read is soft clipped
+                md_list.append(md_extra)
+            elif x == cig[0]: # the start of the read is soft clipped
+                md_list.insert(0,md_extra)
+            else:
+                sys.exit("Error: It looks like one of your cigar strings " + cigar + " encodes a soft clip internally to a read. That shouldn't be happening.")
+
+            # now pad the sequences as needed
+            read_seq += 's' * bases # soft clipped. i don't care what you are. # seq[read_pos:read_pos + bases]
+            # i don't think we should include the original bases in the read, because i don't want to count them downstream,
+            # e.g. in kmer counts, gc count etc, because they didn't actually hit the reference!
+            ref_seq += 's' * bases 
+            query_pos += bases
+            read_pos += bases
             continue
 
         elif cat in ['M', '=', 'X']: # match
@@ -300,7 +322,7 @@ def get_mismatches(seq, cigar, md):
             read_pos += bases
 
         elif cat in ['D', 'N']: # 'D' : the reference has something there and the read doesn't, but pad them both 
-            ref_seq += 'N' * bases
+            ref_seq += 'N' * bases # N means it's an ACTG, we just don't know which one right now
             read_seq += '-' * bases
 
         elif cat == 'I': # I: the read has something there and the reference doesn't, but pad them both 
@@ -312,39 +334,44 @@ def get_mismatches(seq, cigar, md):
         else:
             sys.exit("Error: You've got some strange cigar strings here.")
     
-    ref_pos = 0
-    read_pos = 0
-    mismatch_list = [] # of format [ref, read, pos in alignment]
+    rec_pos = 0 # reconstruction position. refers to position in read_seq and ref_seq. 
+    mismatch_list = [] # of format [ref, read, pos in alignment] 
     for x in md_list:
-        if x.startswith('^'): # this can be arbitrarily long (a ^ and then characters)
+        if x.startswith('softclip'):
+            # skip ahead
+            num = int(x[len("softclip"):])
+            rec_pos += num
+        elif x.startswith('^'): # this can be arbitrarily long (a ^ and then characters)
             num_chars_after_hat = len(x) -1 
-            for i in range(0,num_chars_after_hat):
-                currchar = x[i+1]
-                refhere = currchar
-                readhere = "-" 
-                ref_pos += 1 # but not the read pos
-                # don't need to append to mismatch list 
+            rec_pos += num_chars_after_hat
         else: 
+            # you're a number or a letter
             if x.isdigit(): # can be multiple digits 
-                # you're a number or a letter
-                # if you're a number, you're matching. skip ahead. don't need to add to the mismatch list. 
-                ref_pos += int(x)
-                read_pos += int(x)
-            else: # it will only be one character at a time 
+                # if you're a number, you're matching. skip ahead. don't need to add to the mismatch list.
+                rec_pos += int(x)
+            else: # it will only be one character at a time ; a mismatch
                 refhere = x
-                readhere = read_seq[ref_pos]
-                # update ref_seq
+                readhere = read_seq[rec_pos]
                 char_list = list(ref_seq)
-                char_list[ref_pos] = x
+                char_list[rec_pos] = x
                 ref_seq = "".join(char_list)
-                # moving on
-                mismatch_list.append([refhere,readhere,read_pos +1]) # in genetics we are 1-based (a->g at position 1 means the actual first position, whereas python is 0-based) 
+                # moving on. get the position in the actual read itself, not the reconstructed alignment
+                read_up_to_here = read_seq[0:rec_pos]
+                read_pos = len(read_up_to_here) - read_up_to_here.count("-") # we padded it with "-"s earlier
+                mismatch_list.append([refhere,readhere,read_pos +1])
+                # in genetics we are 1-based (a->g at position 1 means the actual first position, whereas python is 0-based) 
                 if refhere is None or readhere is None:
                     print("Warning: There appears to be an inconsistency with seq " + seq + " and cigar " + cigar + " and md " + md)
                     break
-                ref_pos += 1
-                read_pos += 1
-                # if you're a letter, you're mismatching. the letter is given in the ref. you can find the letter in the read in the seq[ref_pos]. 
+                rec_pos += 1 
+
+    # returns same-length read and ref, padded as needed with "-" and "s" for indels and soft clips respectively,
+    # and a mismatch list which is on the coordinates of the read sequence alone. 
+    # for example: read AGTTCTGAG, cigar 1S6M1D2M and md 2A3^G2 should yield (note md tags don't include soft clipped regions):
+    # sGTTCTG-AG read_seq
+    #  |||||| ||
+    # sGTACTGNAG ref_seq
+    # mismatch_list: [A T 4]. 
 
     return [mismatch_list, ref_seq, read_seq] 
 
@@ -353,15 +380,17 @@ def mismatch_table(read,cigar,md,flagsum):
 
     # first parse the mismatches
     mms, refseq, readseq = get_mismatches(read,cigar,md)
-
-    readlength = len(readseq) # it is important to do len(readseq) and not len(read) because we may have padded it in get_mismatches to account for indels
-
-    # we also want all matches so we can get the denominator for the damage calculation
+    readlength = len(read)
+    # the mismatch list mms is on the coordinates of the read itself, NOT the reconstructed refseq or readseq.
+    # so first, get the reconstructions on the coordinates of the read too:
+    non_dash_indices = [i for i, char in enumerate(readseq) if char != "-"]
+    readseq_no_read_dashes = "".join(readseq[i] for i in non_dash_indices)
+    refseq_no_read_dashes = "".join(refseq[i] for i in non_dash_indices)
     matchs = []
-    for pos in range(len(readseq)):
-        if refseq[pos] == readseq[pos]:
-            matchs.append([refseq[pos], readseq[pos], pos + 1])
-        # this will skip indels; eg C->"-" should not be counted in the damage denominator
+    for i, (read_char, ref_char) in enumerate(zip(readseq_no_read_dashes, refseq_no_read_dashes)):
+        if read_char == ref_char and read_char in "ACTG":  # only count matches if both are an A C T or G 
+            pos = non_dash_indices[i] + 1  # 1 based
+            matchs.append([ref_char, read_char, pos])
 
     # some processing: first, figure out if it's forward or backwards
     # second field of a bam is a flagsum and it parses like this (see eg bowtie2 manual)
@@ -376,7 +405,7 @@ def mismatch_table(read,cigar,md,flagsum):
 
         for entry in range(0,len(mms)): # mismatches
             new_entry = [
-                complement.get(mms[entry][0],"N"), # make everything non-ACTG an N for this purpose
+                complement.get(mms[entry][0],"N"), 
                 complement.get(mms[entry][1],"N"), 
                 readlength - mms[entry][2] +1
             ]
@@ -652,6 +681,7 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
             lcareadname = colon_split
 
             while oldreadname != lcareadname:
+                # skip em but don't forget your progress bar
                 # this must be because there are reads in the lca which are not in the bam. presumably because we didn't write them because none of them met the similarity cutoff.
                 lcalinesskipped += 1
                 currentlcaline = next(lcafile)
@@ -665,11 +695,14 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
             fields = lcaentry[1:]
             nodestodumpinto = []
             for i in range(len(fields)):
-                if (f":{upto}" in fields[i] or f':"{upto}"' in fields[i] or f":'{upto}'" in fields[i]):
-                    # gotta be the last one! 
-                    nodestodumpinto.append(fields[i].split(':')[0])
+                # i recently changed fields to level here, it should be safer
+                splitfields = fields[i].split(":")
+                level = splitfields[2].strip("'").strip('"')
+                nodename = splitfields[0].strip("'").strip('"')
+                if level == upto: 
+                    nodestodumpinto.append(nodename)
                     break
-                nodestodumpinto.append(fields[i].split(':')[0])
+                nodestodumpinto.append(nodename)
 
             # now update everything to all the relevant nodes
             for node in nodestodumpinto:
@@ -719,9 +752,14 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
                             node_data[node]['subs'][sub] = count / num_alignments # so, this can be up to 1 per node. 
                 # add the tax path if it's not already there
                 if node_data[node]['tax_path'] == "":
-                    lca_index = next(i for i, entry in enumerate(lcaentry) if entry.startswith(node))
-                    tax_path = ','.join(lcaentry[lca_index:]).replace('\n','')
-                    node_data[node]['tax_path'] = tax_path
+                    try:
+                        lca_index = next(i for i, entry in enumerate(lcaentry) if entry.split(":")[0].strip("'").strip('"') == node)
+                        tax_path = ','.join(lcaentry[lca_index:]).replace('\n','')
+                        node_data[node]['tax_path'] = tax_path
+                    except StopIteration: # this should not happen
+                        print(f"Error: Something weird has gone wrong. Cannot find node '{node}' in its supposed lca entry. Are there weird characters in your lca entries?")
+                        print(f"The problematic line is {currentlcaline}")
+                        print(f"Will try to continue.")
                 
                 # only at the end should you update total reads 
                 node_data[node]['total_reads'] += 1
@@ -793,7 +831,7 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
         
     if readswithNs >0 :
         print("\nSkipped k-mer counting and DUST score computation for " + str(readswithNs) + " reads with non-ACGT characters. \n" +
-              "If all reads assigned to a taxonomic node have non-ACGT characters, both the mean DUST and duplicity will be 0 for that node.")
+            "If all reads assigned to a taxonomic node have non-ACGT characters, both the mean DUST and duplicity will be 0 for that node.")
 
     print("\nGathered substitution and kmer data for " + str(len(node_data)) + " taxonomic nodes. Now sorting and writing output files... ")
 
@@ -911,14 +949,14 @@ def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_b
         # write 
         if pmds_in_bam:
             row = [int(node), taxname, tn['total_reads'], round(duplicity, 3), round(tn['avgdust'], 2), 
-                   round(dp1, 4), round(dm1, 4), 
-                   round(tn['meanlength'], 2),  round(tn['ani'], 4), round(tn['avgreadgc'], 3),round(avgrefgc, 3), numuniquekmers, round(ratiodup,3),
-                   round(tn['pmdsover2'] / tn['total_reads'], 3), round(tn['pmdsover4'] / tn['total_reads'], 3), tn['tax_path']]
+                round(dp1, 4), round(dm1, 4), 
+                round(tn['meanlength'], 2),  round(tn['ani'], 4), round(tn['avgreadgc'], 3),round(avgrefgc, 3), numuniquekmers, round(ratiodup,3),tn['total_alignments'],
+                round(tn['pmdsover2'] / tn['total_reads'], 3), round(tn['pmdsover4'] / tn['total_reads'], 3), tn['tax_path']]
         else:
             row = [int(node), taxname, tn['total_reads'], round(duplicity, 2), round(tn['avgdust'], 2), 
-                   round(dp1, 4), round(dm1, 4), 
-                   round(tn['meanlength'], 2),  round(tn['ani'], 4), round(tn['avgreadgc'], 3),round(avgrefgc, 3),
-                   numuniquekmers, round(ratiodup,3), tn['total_alignments'], tn['tax_path']]
+                round(dp1, 4), round(dm1, 4), 
+                round(tn['meanlength'], 2),  round(tn['ani'], 4), round(tn['avgreadgc'], 3),round(avgrefgc, 3),
+                numuniquekmers, round(ratiodup,3), tn['total_alignments'], tn['tax_path']]
         rows.append(row)
 
         subsrows[int(node)] = [int(node), taxname, fsubs]
@@ -1152,8 +1190,8 @@ def make_damage_plot(subs, tax, plotfile, ymax=0):
     ax1 = plt.subplot(1, 2, 1)
     for key in values:
         ax1.plot([str(pos) for pos in positions if pos > 0],
-                 [values[key][i] for i, pos in enumerate(positions) if pos > 0],
-                 label=key, color=color_palette[key], linewidth=2)
+            [values[key][i] for i, pos in enumerate(positions) if pos > 0],
+            label=key, color=color_palette[key], linewidth=2)
     ax1.set_ylim(0, max_y)
     ax1.set_xlabel('Position')
     ax1.set_ylabel('Frequency')
@@ -1163,8 +1201,8 @@ def make_damage_plot(subs, tax, plotfile, ymax=0):
     ax2 = plt.subplot(1, 2, 2)
     for key in values:
         ax2.plot([str(pos) for pos in positions if pos < 0],
-                 [values[key][i] for i, pos in enumerate(positions) if pos < 0],
-                 label=key, color=color_palette[key], linewidth=2)
+            [values[key][i] for i, pos in enumerate(positions) if pos < 0],
+            label=key, color=color_palette[key], linewidth=2)
     ax2.set_ylim(0, max_y)
     ax2.set_xlabel('Position')
     ax2.yaxis.set_ticks_position('right')
@@ -1315,13 +1353,333 @@ def parse_exclude_keywords(args):
         return formatted_keywords
     else:
         return []
-    
-    
+
+
+def tsvs_to_matrix(parsed_data, output_file, include='all', minreads=50):
+    # for combine. pretty straightforward, read them all in and construct the matrix by pulling values out as needed
+    # "meandamage" output is actually weighted by number of reads
+
+    include_damage = 'damage' in include or 'all' in include
+    include_duplicity = 'duplicity' in include or 'all' in include
+    include_dust = 'dust' in include or 'all' in include
+    include_taxpath = 'taxpath' in include or 'all' in include
+
+    tax_data = {}
+    for sample_name, records in parsed_data.items():  # parsed_data is a dict: {sample_name: records}
+        if sample_name.endswith('.tsv'):
+            sample_name = sample_name.replace('.tsv', '')
+
+        print(f"Processing sample: {sample_name} with {len(records)} records.")
+        for record in records:
+            taxpath = record[-1]  
+            tax = taxpath.split(',')[0].strip('"')
+            if tax not in tax_data:
+                tax_data[tax] = {
+                    'TaxPath': taxpath,
+                    'samples': {},
+                    'TotalReads': 0,
+                    'WeightedDamage': 0 if include_damage else None,
+                    'WeightSum': 0  
+                }
+
+            sample_data = {
+                'reads': int(record[2]),  
+                'damage': float(record[5]) if include_damage else None,
+                'duplicity': float(record[3]) if include_duplicity else None,
+                'dust': float(record[4]) if include_dust else None,
+            }
+            tax_data[tax]['samples'][sample_name] = sample_data
+            tax_data[tax]['TotalReads'] += sample_data['reads']
+            if include_damage and sample_data['damage'] is not None:
+                tax_data[tax]['WeightedDamage'] += sample_data['damage'] * sample_data['reads']
+            tax_data[tax]['WeightSum'] += sample_data['reads']
+
+    for tax, data in tax_data.items():
+        if include_damage and data['WeightSum'] > 0:
+            data['MeanDamage'] = data['WeightedDamage'] / data['WeightSum']
+        else:
+            data['MeanDamage'] = 'NA'
+
+    tax_data = {tax: data for tax, data in tax_data.items() if data['TotalReads'] >= minreads}
+    sorted_tax_data = sorted(tax_data.items(), key=lambda x: x[1]['TotalReads'], reverse=True)
+
+    with open(output_file, 'w') as outfile:
+
+        header = ['Tax', 'TotalReads']
+        if include_damage:
+            header.append('MeanDamage')
+        for sample_name in sorted(list(parsed_data.keys())):
+            if sample_name.endswith('.tsv'):
+                sample_name = sample_name.replace('.tsv', '')  
+            header.append(f"{sample_name}_reads")
+            if include_damage:
+                header.append(f"{sample_name}_damage")
+            if include_duplicity:
+                header.append(f"{sample_name}_duplicity")
+            if include_dust:
+                header.append(f"{sample_name}_dust")
+        if include_taxpath:
+            header.append('TaxPath') 
+        outfile.write('\t'.join(header) + '\n')  
+
+        for tax, data in sorted_tax_data:
+            row = [tax, str(data['TotalReads'])]
+            if include_damage:
+                row.append(str(round(data['MeanDamage'],3)))
+            for sample_name in sorted(parsed_data.keys()):
+                if sample_name.endswith('.tsv'):
+                    sample_name = sample_name.replace('.tsv', '')  
+                sample_data = data['samples'].get(sample_name, {})
+                row.append(str(sample_data.get('reads', 0)))  
+                if include_damage:
+                    row.append(str(sample_data.get('damage')) if sample_data.get('damage') is not None else 'NA')
+                if include_duplicity:
+                    row.append(str(sample_data.get('duplicity')) if sample_data.get('duplicity') is not None else 'NA')
+                if include_dust:
+                    row.append(str(sample_data.get('dust')) if sample_data.get('dust') is not None else 'NA')
+            if include_taxpath:
+                row.append(data['TaxPath'])  
+            outfile.write('\t'.join(row) + '\n')
+
+
+def make_krona_xml(in_tsv, in_tsv_files, out_xml, minreads=100):
+    # create an xml text file to be loaded into kronatools for visualization. adds damage as a colour option.
+
+    level_order = ["superkingdom", "kingdom", "phylum", "class", "order", "family", "genus", "species"] # detect "upto"
+
+    # did we get one or more files? check they exist then parse the input style 
+    input_files = []
+    if in_tsv:
+        input_files = in_tsv
+    elif in_tsv_files:
+        with open(in_tsv_files, 'r') as file:
+            input_files = [line.strip() for line in file if line.strip()]   
+
+    # check stuff and detect file type (single or combined)
+    for file in input_files:
+        if not os.path.exists(file):
+            raise FileNotFoundError(f"File {file} does not exist.")
+        else:
+            with open(file, 'r') as file:
+                header = file.readline().strip().split('\t')
+                if header[0] != "TaxNodeID":
+                    print("Error: It looks like your input tsv file was not generated from bamdam compute or bamdam combine, or perhaps you edited the header.")
+                    exit(-1)
+
+    # put everything into a tree structure in memory (these tsv files are usually pretty small) and then afterwards interpret it into krona xml format
+    tree = {}
+    sample_names = []
+    sample_max_reads = {} # for colour scale
+    sample_max_damage = {}  # for colour scale
+    sample_reads_at_root = {} # krona format needs this
+
+    for file in input_files:
+        sample_name = file.split('/')[-1].replace('.tsv', '')
+        sample_names.append(sample_name)
+
+        with open(file, 'r') as file:
+            lines = file.readlines()
+        header = lines[0].strip().split('\t')
+
+        # the first thing to do is get the top level; the "upto" that was used
+        taxpath_col = header.index("TaxPath") if "TaxPath" in header else -1
+
+        if not 'toplevel' in locals():
+            # toplevel should be the same across tsv files!
+            levels_found = set()
+            for line in lines[1:]:  
+                fields = line.strip().split('\t')
+                taxpath = fields[taxpath_col]
+                first_node = taxpath.split(',')[0]
+                level = first_node.split(':')[2].strip('"')
+                levels_found.add(level)
+            toplevel = None
+            for level in level_order:
+                if level in levels_found:
+                    toplevel = level
+                    break
+
+        max_reads = int(lines[1].strip().split('\t')[2])  # tsvs are ordered; top line is max reads
+        sample_max_reads[sample_name] = max_reads
+
+        for line in lines[1:]:  # skip the header
+            fields = line.strip().split('\t')
+            reads = int(fields[2]); 
+            dup = float(fields[3]); dust = float(fields[4]); damage = float(fields[5]); lengths = float(fields[7])
+            taxpath = fields[-1].strip('"').strip("'") # 16 used to be -1
+            taxpathsplit = taxpath.split(",")
+            fullnode = taxpathsplit[0].split(":")
+            taxid = fullnode[0]
+            taxname = fullnode[1]
+            level = fullnode[2]
+            if toplevel not in taxpath:
+                continue # skip this line, i don't need to deal with this rare weird case.
+            if reads < minreads:
+                break # you're done with this file
+            if reads >= minreads:
+                if taxid not in tree: # add a new node to the tree structure if it's not already there
+                    tree[taxid] = {
+                        'taxname': taxname,
+                        'samples': {sample_name: {'reads': reads, 'duplicity': dup, 'dust': dust, 'damage': damage, 'length': lengths}},
+                        'taxpath': taxpath,
+                        'children': set()
+                    }
+                else: # otherwise just add this sample info in
+                    if sample_name not in tree[taxid]['samples']:
+                        tree[taxid]['samples'][sample_name] = {'reads': reads, 'duplicity': dup, 'dust': dust, 'damage': damage, 'length': lengths}
+                    # else:  # this should not happen 
+                        # print(f"Warning: The file {sample_name} has two lines for the same tax id {taxid}, or this file is in your list more than once.")
+                if level != toplevel:
+                        # attach it to its parent ; make the parent to attach it to if needed
+                        parent = taxpathsplit[1].split(":")
+                        parent_taxid = parent[0]; parent_taxname = parent[1]; parent_level = parent[2]
+                        if parent_taxid not in tree:
+                            # initialize it. we'll fill it in later. it must be there. 
+                            tree[parent_taxid] = {'taxname': parent_taxname, 'samples': {}, 'taxpath': ", ".join(taxpathsplit[1:]), 'children': set()}
+                        tree[parent_taxid]['children'].add(taxid)
+
+
+        # sum up the reads at the nodes without children in all the nodes which have info for this sample
+        root_reads = sum(tree[taxid]['samples'][sample_name]['reads'] for taxid in tree if 
+                        sample_name in tree[taxid]['samples'] and not any(taxid in tree[child_id]['children'] for child_id in tree))
+        sample_reads_at_root[sample_name] = root_reads
+        
+        # also get max damage of all the taxa for this sample  
+        sample_max_damage[sample_name] = max(
+            node['samples'][sample_name]['damage']
+            for node in tree.values()
+            if sample_name in node['samples'] and node['samples'][sample_name]['damage'] is not None
+        )
+
+    # a very handy debug point, i will leave it here in case anyone is ever changing this code and needs it (needs a package):
+#    from pprint import pprint
+#    treefile = "tree.tmp"
+#    def write_tree_to_file(tree, filename):
+#        with open(filename, "w") as f:
+#            pprint(tree, stream=f)  # print the tree in a readable format
+#        print(f"Tree structure written to file: {filename}")
+#    write_tree_to_file(tree, treefile)
+
+    # now build the xml manually by iterating through the tree 
+
+    # first build a summary of everything if there is more than one thing; 
+    # just iterate through existing nodes to do this then treat the summary like a bonus sample 
+    if len(input_files) > 1:
+        all_children = {child for node in tree.values() for child in node['children']}
+        tree_items = list(tree.items())
+
+        for taxid, node in tree_items:
+            all_reads = 0
+            weighted_damage_sum = 0
+            total_reads_for_damage = 0
+            duplicity_values = []
+            dust_values = []
+            length_values = []
+
+            for sample in node['samples']:
+                sample_data = node['samples'][sample]
+                all_reads += sample_data['reads']
+                duplicity_values.append(sample_data['duplicity'])
+                dust_values.append(sample_data['dust'])
+                length_values.append(sample_data['length'])
+                if sample_data['damage'] is not None:
+                    weighted_damage_sum += sample_data['reads'] * sample_data['damage']
+                    total_reads_for_damage += sample_data['reads']
+
+            avg_duplicity = sum(duplicity_values) / len(duplicity_values)
+            avg_dust = sum(dust_values) / len(dust_values)
+            damage = weighted_damage_sum / total_reads_for_damage if total_reads_for_damage > 0 else 0
+            avg_length = sum(length_values) / len(length_values)
+
+            node['samples']['Summary'] = {
+                'reads': all_reads,
+                'damage': round(damage,3),
+                'duplicity': round(avg_duplicity,3),
+                'dust': round(avg_dust,3),
+                'length': round(avg_length,3)
+            }
+
+        summary_root_reads = sum(
+            node['samples']['Summary']['reads']
+            for taxid, node in tree_items
+            if 'Summary' in node['samples'] and taxid not in all_children
+        )
+        sample_reads_at_root['Summary'] = summary_root_reads
+
+        sample_names.insert(0, "Summary")
+
+    # right now i am standardizing the colour scale for both damage and number of reads across all krona plots
+    # but this is set up so that can be changed easily enough
+    overall_max_reads = max(
+        node['samples'][sample]['reads']
+        for node in tree.values()
+        for sample in node['samples']
+    )
+    overall_max_damage = max(
+        node['samples'][sample]['damage']
+        for node in tree.values()
+        for sample in node['samples']
+        if node['samples'][sample]['damage'] is not None
+    )
+
+    def add_node_to_xml(node_id, tree, indent_level=2):
+
+        node_data = tree[node_id]
+        indent = "\t" * indent_level
+        node_str = f'{indent}<node name="{node_data["taxname"]}">\n'
+        
+        for attr in ["reads", "damage", "duplicity", "dust", "length"]:
+            node_str += f"{indent}\t<{attr}>"
+            for sample_name in sample_names:
+                # add a 0 if this sample name doesn't appear for this node
+                value = node_data['samples'].get(sample_name, {}).get(attr, 0)
+                node_str += f"<val>{value}</val>"
+            node_str += f"</{attr}>\n"
+
+        for child_id in node_data["children"]:
+            node_str += add_node_to_xml(child_id, tree, indent_level + 1)
+        
+        node_str += f"{indent}</node>\n"
+        return node_str
+
+    with open(out_xml, "w") as file:
+        file.write('<krona>\n')
+        file.write("\t<attributes magnitude=\"reads\">\n")
+        file.write("\t\t<attribute display=\"Reads\">reads</attribute>\n")
+        file.write("\t\t<attribute display=\"Damage\">damage</attribute>\n")
+        file.write("\t\t<attribute display=\"Duplicity\">duplicity</attribute>\n")
+        file.write("\t\t<attribute display=\"Dust\">dust</attribute>\n")
+        file.write("\t\t<attribute display=\"Mean Read Length\">length</attribute>\n")
+        file.write("\t</attributes>\n")
+        file.write(f'\t<color attribute="reads" valueStart="0" valueEnd="{overall_max_reads}" hueStart="120" hueEnd="240"></color>\n')
+        file.write(f'\t<color attribute="damage" valueStart="0" valueEnd="{overall_max_damage}" hueStart="0" hueEnd="240"></color>\n')
+        file.write("\t<datasets>\n")
+        for sample_name in sample_names:
+            file.write(f"\t\t<dataset>{sample_name}</dataset>\n")
+        file.write("\t</datasets>\n")
+        file.write('\t<node name="Root">\n')
+        file.write('\t\t<reads>')
+        for sample_name in sample_names:
+            root_reads = sample_reads_at_root.get(sample_name, 0)  
+            file.write(f'<val>{root_reads}</val>')
+        file.write('</reads>\n')
+
+        for root_taxid in [taxid for taxid in tree if not any(taxid in tree[child_id]["children"] for child_id in tree)]:
+            try:
+                file.write(add_node_to_xml(root_taxid, tree))
+            except RecursionError:
+                print(f"There was a recursion error for {root_taxid}. We will skip it. If your tree is truly ginormous, you can increase the recursion limit at the beginning of this function.")
+                continue
+
+        file.write("</krona>\n")
+    print(f"Krona XML written to {out_xml}")
+
+
 def shrink(args):
     formatted_exclude_keywords = parse_exclude_keywords(args)
     lca_file_type = find_lca_type(args.in_lca)
     if(lca_file_type == "metadmg"):
-        print("You are running bamdam shrink with a metadmg-style lca file. This is ok, but be aware the output lca file will be in ngsLCA lca file format.")
+        print("You are running bamdam shrink with a metadmg-style lca file. This is ok, but be aware the output lca file will be in ngsLCA lca file format, as all the other functions in bamdam require this format.")
     shortlcalines = write_shortened_lca(args.in_lca, args.out_lca, args.upto, args.mincount, formatted_exclude_keywords, lca_file_type)
     write_shortened_bam(args.in_bam, args.out_lca, args.out_bam, args.stranded, args.minsim, args.annotate_pmd, shortlcalines)
 
@@ -1346,6 +1704,29 @@ def plotdamage(args):
 def plotbaminfo(args):
     make_baminfo_plot(args.in_bam, args.outplot)
 
+def combine(args):
+    # parse real quick
+    input_files = []
+    if args.in_tsv:
+        input_files = args.in_tsv
+    elif args.in_tsv_list:
+        with open(args.in_tsv_list, 'r') as file:
+            input_files = [line.strip() for line in file if line.strip()]   
+    parsed_data = {}
+    for file_path in input_files:
+        sample_name = file_path.split('/')[-1].replace('.tsv', '')  
+        parsed_data[sample_name] = []
+        with open(file_path, 'r') as file:
+            for i, line in enumerate(file):
+                fields = line.strip().split('\t')
+                if i == 0: # skip the header line
+                    continue
+                parsed_data[sample_name].append(fields)
+    tsvs_to_matrix(parsed_data, args.out_tsv, args.include, args.minreads)
+
+def krona(args):
+    make_krona_xml(args.in_tsv, args.in_tsv_list, args.out_xml, args.minreads)
+
 def main():
 
     # Initialize
@@ -1362,7 +1743,7 @@ def main():
     parser_shrink.add_argument("--out_bam", type=str, required=True, help="Path to the short output BAM file (required)")
     parser_shrink.add_argument("--stranded", type=str, required=True, help="Either ss for single stranded or ds for double stranded (required)")
     parser_shrink.add_argument("--mincount", type=int, default=5, help="Minimum read count to keep a node (default: 5)")
-    parser_shrink.add_argument("--upto", type=str, default="family", help="Keep nodes up to and including this tax threshold; use root to disable (default: family)")
+    parser_shrink.add_argument("--upto", type=str, default="family", help="Keep nodes up to and including this tax threshold (default: family)")
     parser_shrink.add_argument("--minsim", type=float, default=0.9, help="Minimum similarity to reference to keep an alignment (default: 0.9)")
     parser_shrink.add_argument("--exclude_keywords", type=str, nargs='+', default=[], help="Keyword(s) to exclude when filtering (default: none)")
     parser_shrink.add_argument("--exclude_keyword_file", type=str, default=None, help="File of keywords to exclude when filtering, one per line (default: none)")
@@ -1404,6 +1785,27 @@ def main():
     parser_plotbaminfo.add_argument("--outplot", type=str, default="baminfo_plot.png", help="Filename for the output plot, ending in .png or .pdf (default: baminfo_plot.png)")
     parser_plotbaminfo.set_defaults(func=plotbaminfo)
 
+    # Combine
+    parser_combine = subparsers.add_parser(
+        'combine', help="Combine multiple bamdam tsv files to generate a multi-sample tsv.")
+    group_input_combine = parser_combine.add_mutually_exclusive_group(required=True)
+    group_input_combine.add_argument("--in_tsv", nargs='+', help="List of input tsv files.")
+    group_input_combine.add_argument("--in_tsv_list", help="Path to a text file containing paths to input tsv files, one per line.")
+    parser_combine.add_argument("--out_tsv", type=str, default="combined.tsv", help="Path to output tsv file name (default: combined.tsv)")
+    parser_combine.add_argument("--minreads", type=float, default=50, help="Minimum reads across samples to include taxa (default: 50).")
+    parser_combine.add_argument("--include", nargs='*', choices=['damage', 'duplicity', 'dust', 'taxpath', 'all', 'none'], default=['all'], help="Additional metrics to include in output file. Specify any combination of the first four, 'all', or 'none'. (default: all)")
+    parser_combine.set_defaults(func=combine)
+
+    # krona
+    parser_krona = subparsers.add_parser(
+        'krona', help="Generate Krona XML file from one or more tsv files.")
+    group_input_krona = parser_krona.add_mutually_exclusive_group(required=True)
+    group_input_krona.add_argument("--in_tsv", type=str,nargs='+', help="Path to tsv file(s) (required)")
+    group_input_krona.add_argument("--in_tsv_list", help="Path to a text file containing paths to input tsv files, one per line.")
+    parser_krona.add_argument("--out_xml", type=str, default="out.xml", help="Path to output xml file name (default: out.xml)")
+    parser_krona.add_argument("--minreads", type=int, default=100, help="Minimum reads across samples to include taxa (default: 100)")
+    parser_krona.set_defaults(func=krona)
+
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit()
@@ -1443,6 +1845,15 @@ def main():
             print("Error: Your bam file does not appear to be read-sorted. Please try again with it once it has been read-sorted (samtools sort -n), which should be the same order as your lca file. \n")
             exit(-1) 
 
+    if hasattr(args, 'in_tsv') and hasattr(args, 'in_tsv_list') and args.in_tsv is not None and args.in_tsv_list is not None:
+        raise ValueError("You cannot specify both --in_tsv and --in_tsv_list at the same time. Use one or the other.")
+    if hasattr(args, 'minreads') and args.minreads < 0:
+        raise ValueError("Min reads must be a non-negative integer.")
+    if hasattr(args, 'include'):
+        invalid_metrics = set(args.include) - {'damage', 'duplicity', 'dust', 'taxpath', 'all', 'none'}
+        if invalid_metrics:
+            raise ValueError(f"Invalid metrics in --include: {', '.join(invalid_metrics)}. Allowed values are: 'damage', 'duplicity', 'dust', 'taxpath', 'all', 'none', or combinations of the first four.")
+
     if args.command == 'shrink':
         print("Hello! You are running bamdam shrink with the following arguments:")
         print(f"in_lca: {args.in_lca}")
@@ -1476,6 +1887,27 @@ def main():
         print(f"in_lca: {args.in_lca}")
         print(f"out_bam: {args.out_bam}")
         print(f"keyword: {args.keyword}")
+
+    elif args.command == 'combine':
+        print("Hello! You are running bamdam combine with the following arguments:")
+        if hasattr(args, 'input') and args.in_tsv:
+            print(f"Input files: {', '.join(args.in_tsv)}")
+        if hasattr(args, 'input_files') and args.in_tsv_files:
+            print(f"Input file list: {args.in_tsv_files}")
+        print(f"Output file: {args.out_tsv}")
+        print(f"Min reads: {args.minreads}")
+        if args.include:
+            print(f"Included metrics: {', '.join(args.include)}")   
+
+    elif args.command == 'krona':
+        print("Hello! You are running bamdam krona with the following arguments:")
+        if hasattr(args, 'input') and args.in_tsv:
+            print(f"Input files: {' '.join(args.in_tsv)}")
+        if hasattr(args, 'input_files') and args.in_tsv_files:
+            print(f"Input file list: {args.in_tsv_files}")
+        print(f"Output file: {args.out_xml}")    
+        print(f"Min reads: {args.minreads}")
+
 
     if not tqdm_imported:
         print("The library tqdm is not available, so progress bars will not be shown. This will not impact performance.")
