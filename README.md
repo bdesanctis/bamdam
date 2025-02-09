@@ -171,19 +171,6 @@ Example output:
 
 ### <a name="plotbaminfo"></a>bamdam plotbaminfo
 
-Plots mismatch and read length distributions. Mostly intended to be used after bamdam extract. Not very fast for large input bam. Produces png or pdf depending on output file suffix.
-
-```
-./bamdam plotbaminfo --in_bam IN_BAM --outplot OUTPLOT
-```
-
-Example output:
-<p align="center">
-<img src="example/CGG3_Myrtoideae_baminfo.png" width="600">
-</p>
-
-### <a name="plotbaminfo"></a>bamdam plotbaminfo
-
 Plots mismatch and read length distributions. Mostly intended to be used after bamdam extract. Not very fast for large input bam. Produces png or pdf.
 
 ```
