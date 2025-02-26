@@ -198,9 +198,13 @@ optional arguments:
                         Path to a text file containing paths to input tsv files, one per line.
   --out_xml OUT_XML     Path to output xml file name (default: out.xml)
   --minreads MINREADS   Minimum reads across samples to include taxa (default: 100)
+  --maxdamage MAXDAMAGE
+                        Force a maximum value for the 5' C-to-T damage color scale. If not provided, the maximum value is determined from the data, with a minimum threshold of 0.3. (not recommended by default)
 ```
 
- [See an example output here](https://bdesanctis.github.io/bamdam/example/microbe_krona.html)  (make sure to click "Color by Damage" on the left).
+ [See an example output here](https://bdesanctis.github.io/bamdam/example/microbe_krona.html)  (make sure to click "Color by Damage" on the left). 
+
+Note: There appears to be an occasional Krona bug that incorrectly labels the numerical labels on the ticks of the colour bar in the bottom left, but this does not seem to affect colours in the figure itself. 
 
 ## <a name="tutorial"></a>Tutorial
 
