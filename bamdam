@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # bamdam by Bianca De Sanctis, bddesanctis@gmail.com  
-# last updated feb 25 2025
+# last updated feb 26 2025
 
 import sys 
 import re
@@ -1455,16 +1455,40 @@ def make_krona_xml(in_tsv, in_tsv_files, out_xml, minreads, maxdamage):
         with open(in_tsv_files, 'r') as file:
             input_files = [line.strip() for line in file if line.strip()]   
 
-    # check stuff and detect file type (single or combined)
+
+    # validate input files: check existence, header format, and minreads threshold
+    valid_files = []
     for file in input_files:
         if not os.path.exists(file):
-            raise FileNotFoundError(f"File {file} does not exist.")
-        else:
-            with open(file, 'r') as file:
-                header = file.readline().strip().split('\t')
-                if header[0] != "TaxNodeID":
-                    print("Error: It looks like your input tsv file was not generated from bamdam compute or bamdam combine, or perhaps you edited the header.")
-                    exit(-1)
+            print(f"Error: File {file} does not exist.")
+            continue
+        with open(file, 'r') as f:
+            lines = f.readlines()
+            if len(lines) < 2:
+                print(f"Error: File {file} does not have enough lines to check reads.")
+                continue
+            header = lines[0].strip().split('\t')
+            if header[0] != "TaxNodeID":
+                print("Error: It looks like your input tsv file was not generated from bamdam compute or bamdam combine, or perhaps you edited the header.")
+                continue
+            fields = lines[1].strip().split('\t')
+            try:
+                reads = int(fields[2])
+                if reads < minreads:
+                    print(f"Warning: File {file} only contains taxa with at most ({reads}), which is below minreads ({minreads}). This file will be excluded.")
+                    continue
+            except (ValueError, IndexError):
+                print(f"Error: File {file} has an unexpected format and will be excluded.")
+                continue
+        valid_files.append(file)
+    input_files = valid_files
+
+    # If no valid files remain, exit early
+    if not input_files:
+        print("Error: No valid input files remain after filtering. Exiting.")
+        exit(-1)
+
+    # checks complete
 
     # put everything into a tree structure in memory (these tsv files are usually pretty small) and then afterwards interpret it into krona xml format
     tree = {}
