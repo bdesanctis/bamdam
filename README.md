@@ -39,7 +39,7 @@ The first two functions are bamdam **shrink** and bamdam **compute**. When mappi
 
 The rest of the functions operate on the output of bamdam **shrink** and **compute**. The **extract** command extracts reads assigned to a specific taxonomic node from a bam file into another bam file for downstream analyses, optionally detecting the top reference for that node. The **plotdamage** command uses the subs file(s), a secondary output from bamdam compute, to quickly produce a postmortem damage "smiley" plot for a specified taxonomic node. The **plotbaminfo** command takes a bam file as input (e.g. from bamdam extract), and plots the mismatch and read length distributions. The **combine** command takes multiple tsv files to create a multi-sample abundance/damage/etc matrix. Lastly the **krona** command converts one or more (optionally pre-filtered) bamdam tsv files into XMLs which can be imported into [KronaTools](https://github.com/marbl/Krona) to make interactive Krona plots, in which each taxa is coloured by its 5' C-to-T misincorporation frequency, and additional information such as duplicity and mean read length per taxa is embedded. [See an example here](https://bdesanctis.github.io/bamdam/example/microbe_krona.html)  (make sure to click "Color by Damage" on the left).
 
-Bamdam is not particularly optimized for speed, and doesn't support threading (much of the effort is spent on bam file I/O). On the other hand, it reads and writes bams line-by-line, so it shouldn't need too much RAM (usually <5GB). A 50GB shotgun sequencing bam file takes a few hours on my laptop, and this should scale roughly linearly, with higher runtimes expected for capture or highly informative data. 
+Bamdam is not particularly optimized for speed, and doesn't support threading (much of the effort is spent on bam file I/O). On the other hand, it reads and writes bams line-by-line, so it shouldn't need too much RAM (usually <8GB). A 50GB shotgun sequencing bam file takes a few hours on my laptop, and this should scale roughly linearly, with higher runtimes expected for capture or highly informative data. 
 
 ## <a name="use"></a>Usage
 
@@ -100,7 +100,7 @@ Full list of the output tsv columns:
 - **TaxNodeID**: The tax node ID from the lca file.
 - **TaxName**: The tax name from the lca file.
 - **TotalReads**: The number of reads assigned to that node or underneath.
-- **Duplicity**: The average number of times a k-mer has been seen, where the k-mers are from reads assigned to that node or underneath. Should be close to 1 (equivalent to no duplicated k-mers) unless coverage is high.
+- **Duplicity**: The average number of times a k-mer has been seen, where the k-mers are from reads assigned to that node or underneath. Should be close to 1 (equivalent to no duplicated k-mers) unless coverage is high or breadth of coverage is uneven.
 - **MeanDust**: The average DUST score for reads assigned to that node or underneath. This is a measure of read set complexity based on trinucleotide counts which ranges from 0 to 100, where 100 is the least complex, and below 7 is roughly "high complexity".
 - **Damage+1**: The proportion of reads assigned to that node or underneath where every alignment of that read had a C->T on the 5' (+1) position. 
 - **Damage-1**: The proportion of reads assigned to that node or underneath where every alignment of that read had a C->T if single stranded, or a G->A if double stranded, on the 3' (-1) position.
@@ -109,7 +109,7 @@ Full list of the output tsv columns:
 - **AvgReadGC**: Average GC content of the reads assigned to that node or underneath.
 - **AvgRefGC**: Average GC content of the reconstructed reference genomic intervals with mapped reads assigned to that node or underneath.
 - **UniqueKmers**: The number of unique k-mers in the reads assigned to that node or underneath.
-- **RatioDupKmers**: Another way of thinking about duplicity: 1 minus the ratio of unique k-mers divided by the number of total k-mers. Should be close to 0 (equivalent to no duplicated k-mers) unless coverage is high.
+- **RatioDupKmers**: Another way of thinking about duplicity: 1 minus the ratio of unique k-mers divided by the number of total k-mers. Should be close to 0 (equivalent to no duplicated k-mers) unless coverage is high or breadth of coverage is uneven.
 - **TotalAlignments**: Sum of the number of alignments for all the reads assigned to that node or underneath.
 - **taxpath**: The full taxonomic path from the lca file.
 
@@ -165,9 +165,9 @@ Plots a postmortem damage "smiley" plot using the subs file produced from bamdam
 ./bamdam plotdamage --in_subs IN_SUBS --tax TAX --outplot OUTPLOT
 ```
 
-Example output:
+Example output for multiple input files:
 <p align="center">
-<img src="example/CGG3_Myrtoideae_damageplot.png" width="600">
+<img src="example/damage_plot.png" width="500">
 
 ### <a name="plotbaminfo"></a>bamdam plotbaminfo
 
@@ -177,14 +177,14 @@ Plots mismatch and read length distributions. Mostly intended to be used after b
 ./bamdam plotbaminfo --in_bam IN_BAM --outplot OUTPLOT
 ```
 
-Example output:
+Example output for one input file:
 <p align="center">
-<img src="example/CGG3_Myrtoideae_baminfo.png" width="600">
+<img src="example/CGG3_Myrtoideae_baminfo.png" width="500">
 </p>
 
 ### <a name="krona"></a>bamdam krona
 
-Converts one or more tsv files (from bamdam compute) to an XML file formatted for [KronaTools](https://github.com/marbl/Krona). Output includes damage, dust and duplicity for each taxa for each sample, and the pie wedges of the Krona plot can be coloured by their 5' damage. Will also compute a summary Krona plot if the input is more than one file, with total reads per taxa and mean read-weighted damage values. 
+Converts one or more tsv files (from bamdam compute) to an XML file which can be passed to [KronaTools](https://github.com/marbl/Krona)'s ktImportXML function to produce multi-sample, damage-coloured Krona html files. Output is annotated with 5' damage, dust, duplicity and mean read length for each taxa for each sample, and the pie wedges of the Krona plot can be coloured by their 5' damage. Will also compute a summary Krona plot if the input is more than one file, with total reads per taxa and mean read-weighted damage values. Input tsv files may be filtered as long as the header is preserved.
 
 ```
 usage: bamdam krona [-h] (--in_tsv IN_TSV [IN_TSV ...] | --in_tsv_list IN_TSV_LIST) [--out_xml OUT_XML]
