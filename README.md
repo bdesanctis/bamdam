@@ -67,15 +67,17 @@ options:
   --annotate_pmd        Annotate output bam file with PMD tags (default: not set)
 ```
 
-Bamdam shrink will first subset your lca file to include only nodes which: ((are at or below the tax threshold) AND which meet the minimum read count), OR (are below a node which meets the former criteria), and only reads which meet the minimum similarity. You may optionally give it a list or file of tax identifiers to exclude (e.g., taxa identified in your control samples). For exclusions, you can give it tax IDs (e.g. 4919) or full tax strings (e.g. 4919:Homo sapiens:species). You can also filter the input lca file yourself beforehand, as long as the original order and format is preserved. For example, you may only be interested in eukaryotes, and so wish to do something like 
+Bamdam shrink will first subset your lca file to include only nodes which: ((are at or below the tax threshold) AND which meet the minimum read count), OR (are below a node which meets the former criteria), and only reads which meet the minimum similarity. You may optionally give it a list or file of tax identifiers to exclude (e.g., taxa identified at some minimum threshold in your control samples). For exclusions, you can give it numeric tax IDs (e.g. 4919) or full tax strings (e.g. 4919:Homo sapiens:species). You can also filter the input lca file yourself beforehand, as long as the original order and format is preserved. For example, you may only be interested in eukaryotes, and so wish to do something like 
 
 ```grep "Eukaryot" A.lca > A_onlyeukaryots.lca```
 
-before running bamdam, which would speed it up. The new file will only contain reads which have the user-defined tax threshold present in their taxonomic path.
+before running bamdam shrink, which would speed it up. The new file will only contain reads which have the user-defined tax threshold present in their taxonomic path.
 
 Once the new lca file is written, bamdam shrink will subset the bam file to include only reads which appear in the newly shortened LCA file, and only alignments of those reads which meet the minimum similarity cutoff. 
 
 Bamdam shrink will also optionally annotate the new bam file with PMD scores as in PMDTools (in the DS:Z field) (--annotate_pmd), but PMD score annotation will roughly double the amount of time this command takes. PMD scores are from [Skoglund et al. 2014](https://doi.org/10.1073/pnas.131893411). 
+
+Note that merging read-sorted bam files will lose the sort order, even though the resulting bam file will still claim to be read-sorted in its header, leading to a silent ngsLCA error and incorrect bamdam results. To avoid this, please read-sort bam files immediately before ngsLCA.
 
 ### <a name="compute"></a>bamdam compute
 
@@ -107,7 +109,7 @@ Full list of the output tsv columns:
 - **MeanLength**: The mean length of the reads assigned to that node or underneath.
 - **ANI**: Average nucleotide identity of the reads assigned to that node or underneath. 
 - **AvgReadGC**: Average GC content of the reads assigned to that node or underneath.
-- **AvgRefGC**: Average GC content of the reconstructed reference genomic intervals with mapped reads assigned to that node or underneath.
+- **AvgRefGC**: Average GC content of the reconstructed reference genomic intervals associated to reads assigned to that node or underneath.
 - **UniqueKmers**: The number of unique k-mers in the reads assigned to that node or underneath.
 - **RatioDupKmers**: Another way of thinking about duplicity: 1 minus the ratio of unique k-mers divided by the number of total k-mers. Should be close to 0 (equivalent to no duplicated k-mers) unless coverage is high or breadth of coverage is uneven.
 - **TotalAlignments**: Sum of the number of alignments for all the reads assigned to that node or underneath.
@@ -124,8 +126,7 @@ Bamdam compute aggregates statistics up the taxonomy and outputs rows for all ta
 Takes in multiple tsv files from the output of bamdam compute, and combines them into one matrix. Output will always contain a total reads column, and by default will also include per-sample damage (on the 5' +1 position), the read-weighted damage mean over all samples per taxa, and the duplicity and dust per-sample. By default, only includes taxa with more than 50 total reads across samples. 
 
 ```
-usage: bamdam combine [-h] (--in_tsv IN_TSV [IN_TSV ...] | --in_tsv_list IN_TSV_LIST) [--out_tsv OUT_TSV]
-                      [--minreads MINREADS] [--include [{damage,duplicity,dust,taxpath,all,none} ...]]
+usage: bamdam combine --in_tsv_list TSVLIST --out_tsv OUTTSV
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -145,7 +146,7 @@ optional arguments:
 Extracts reads assigned to a specific taxonomic node or underneath from a bam file. Output is another bam file. Accepts tax IDs or full tax strings. Subsetting the header is recommended to minimize output file size but it is slower, so not set by default. If subsetting the header, you can also choose to only include alignments to the most-hit reference genome to obtain a single-reference-genome bam. 
 
 ```
-usage: bamdam extract [-h] --in_bam IN_BAM --in_lca IN_LCA --out_bam OUT_BAM --keyword KEYWORD [--subset_header] [--only_top_ref]
+usage: bamdam extract --in_bam IN_BAM --in_lca IN_LCA --out_bam OUT_BAM --keyword KEYWORD [--subset_header] [--only_top_ref]
 
 options:
   -h, --help         show this help message and exit
@@ -159,10 +160,20 @@ options:
 
 ### <a name="plotdamage"></a>bamdam plotdamage
 
-Plots a postmortem damage "smiley" plot using the subs file produced from bamdam compute. Can take one or more subs files. Fast. Accepts tax IDs only (e.g. "9606"). Produces png or pdf depending on output file suffix.
+Plots a postmortem damage "smiley" plot using the subs file produced from bamdam compute. Can take one or more subs files. Fast. Accepts numeric tax IDs only (e.g. "9606"). Produces png or pdf depending on output file suffix.
 
 ```
-./bamdam plotdamage --in_subs IN_SUBS --tax TAX --outplot OUTPLOT
+usage: bamdam plotdamage --in_subs SUBS --tax TAXID --outplot damageplot.png
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --in_subs IN_SUBS [IN_SUBS ...]
+                        Input subs file(s)
+  --in_subs_list IN_SUBS_LIST
+                        Path to a text file contaning input subs files, one per line
+  --tax TAX             Taxonomic node ID (required)
+  --outplot OUTPLOT     Filename for the output plot, ending in .png or .pdf (default: damage_plot.png)
+  --ymax YMAX           Maximum for y axis (optional)
 ```
 
 Example output for multiple input files:
@@ -171,10 +182,18 @@ Example output for multiple input files:
 
 ### <a name="plotbaminfo"></a>bamdam plotbaminfo
 
-Plots mismatch and read length distributions. Mostly intended to be used after bamdam extract. Not very fast for large input bam. Produces png or pdf.
+Plots mismatch and read length distributions. Mostly intended to be used after bamdam extract. Not very fast for large input bam(s). Produces png or pdf.
 
 ```
-./bamdam plotbaminfo --in_bam IN_BAM --outplot OUTPLOT
+usage: bamdam plotbaminfo [-h] (--in_bam IN_BAM [IN_BAM ...] | --in_bam_list IN_BAM_LIST) [--outplot OUTPLOT]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --in_bam IN_BAM [IN_BAM ...]
+                        Input bam file(s)
+  --in_bam_list IN_BAM_LIST
+                        Path to a text file containing input bams, one per line
+  --outplot OUTPLOT     Filename for the output plot, ending in .png or .pdf (default: baminfo_plot.png)
 ```
 
 Example output for one input file:
@@ -184,7 +203,7 @@ Example output for one input file:
 
 ### <a name="krona"></a>bamdam krona
 
-Converts one or more tsv files (from bamdam compute) to an XML file which can be passed to [KronaTools](https://github.com/marbl/Krona)'s ktImportXML function to produce multi-sample, damage-coloured Krona html files. Output is annotated with 5' damage, dust, duplicity and mean read length for each taxa for each sample, and the pie wedges of the Krona plot can be coloured by their 5' damage. Will also compute a summary Krona plot if the input is more than one file, with total reads per taxa and mean read-weighted damage values. Input tsv files may be filtered as long as the header is preserved.
+Converts one or more tsv files (from bamdam compute) to an XML file which can be passed to [KronaTools](https://github.com/marbl/Krona)'s ktImportXML function to produce multi-sample, damage-coloured Krona html files. Output is annotated with 5' damage, dust, duplicity and mean read length for each taxa for each sample, and the pie wedges of the Krona plot can be coloured by their 5' damage. Will also compute a summary Krona plot if the input is more than one file, with total reads per taxa and mean read-weighted damage values. Input tsv files may be pre-filtered as long as the bamdam-style header is preserved.
 
 ```
 usage: bamdam krona [-h] (--in_tsv IN_TSV [IN_TSV ...] | --in_tsv_list IN_TSV_LIST) [--out_xml OUT_XML]
@@ -218,11 +237,11 @@ Running the main bamdam commands may take another few minutes.
 ./bamdam shrink --in_bam CGG3_015421.sub_sorted.bam --in_lca CGG3_015421.lca --out_bam CGG3.small.bam --out_lca CGG3.small.lca --stranded ds
 ./bamdam compute --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_tsv CGG3.tsv --out_subs CGG3.subs.txt --stranded ds
 ```
-Now you can look at your output files and see what's in there. The tsv is ordered by read count.
+Now you can look at the output files and see what's in there. The tsv is ordered by read count.
 ```
 head CGG3.tsv
 ```
-Looks like the top hit is the plant subfamily Myrtoideae, with tax ID 1699513. This looks real and ancient: k-mer duplicity close to 1, sufficiently low mean DUST score, high amounts of damage on both ends, short read length, etc. Next let's plot damage for this taxa.
+Looks like the top hit is the plant subfamily Myrtoideae, with tax ID 1699513. This looks real and ancient: k-mer duplicity close to 1, sufficiently low mean DUST score, high amounts of damage on both ends, short read length, etc. Let's take a closer look and plot damage for this taxa.
 ```
 ./bamdam plotdamage --in_subs CGG3.subs.txt --tax 1699513 --outplot CGG3_Myrtoidae_damageplot.png
 ```
@@ -241,19 +260,19 @@ wget "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nucleotide&id
 samtools sort CGG3.MyrtoideaeTopRef.bam > CGG3.MyrtoideaeTopRefSorted.bam
 samtools coverage CGG3.MyrtoideaeTopRefSorted.bam -m
 ```
-The next part of this tutorial is about combining and visualizing multiple samples, so we will need to download a few more tsv files. Let's switch datasets to showcase a broader range of data - though you can also run all the following commands on the tsv we just created. These are from an ancient microbial study, and were generated from bamdam shrink + compute after using ngsLCA with the GTDB taxonomy.
+The next part of this tutorial is about combining and visualizing multiple samples together, so we will need to download a few more tsv files. Let's also switch datasets to showcase a broader range of data - though you can also run all the following commands on the tsv we just created. These new files are from an unpublished ancient microbial study with single-stranded library prep, and were generated from bamdam shrink + compute after using ngsLCA with the GTDB taxonomy.
 ```
 wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/microbes1.tsv
 wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/microbes2.tsv
 wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/microbes_control.tsv
 ```
-We can combine multiple files into a single matrix. This will output the tax name, total reads, read-weighted mean damage, and per-sample per-taxa damage, duplicity and dust. 
+We can combine multiple files into a single matrix. By default this will include the tax name, total reads, read-weighted mean damage, and per-sample per-taxa damage, duplicity and dust. 
 ```
-ls microbes* > input_list.txt
-./bamdam combine --in_tsv_list input_list.txt --out_tsv microbes_combined.tsv
-head microbes_combined.tsv
+ls microbes*tsv > input_list.txt
+./bamdam combine --in_tsv_list input_list.txt --out_tsv combined_microbes.tsv
+head combined_microbes.tsv
 ```
-Lastly we create a set of interactive, damage-coloured Krona plots by converting a set of tsv files into a single XML file with bamdam, then importing that file into KronaTools. Bamdam will also generate a summary plot as the first plot in the output. The latter command requires having  [KronaTools](https://github.com/marbl/Krona) installed. 
+Lastly we create a set of interactive, damage-coloured Krona plots by converting a set of tsv files into a single XML file with bamdam, then importing that file into a KronaTools function which converts XML to html. Bamdam will also generate a summary plot as the first plot in the output. The latter command requires having [KronaTools](https://github.com/marbl/Krona) installed. 
 ```
 ./bamdam krona --in_tsv_list input_list.txt --out_xml microbes.xml
 ktImportXML -o microbes.html microbes.xml
