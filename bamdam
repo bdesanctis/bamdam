@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # bamdam by Bianca De Sanctis, bddesanctis@gmail.com  
-# last updated feb 25 2025
+# last updated mar 18 2025
 
 import sys 
 import re
@@ -380,7 +380,8 @@ def mismatch_table(read,cigar,md,flagsum):
 
     # first parse the mismatches
     mms, refseq, readseq = get_mismatches(read,cigar,md)
-    readlength = len(read)
+
+    readlength = len(readseq)
     # the mismatch list mms is on the coordinates of the read itself, NOT the reconstructed refseq or readseq.
     # so first, get the reconstructions on the coordinates of the read too:
     non_dash_indices = [i for i, char in enumerate(readseq) if char != "-"]
@@ -435,6 +436,7 @@ def mismatch_table(read,cigar,md,flagsum):
             matchsc[entry][2] = -(readlength - pos + 1)
 
     return mmsc, matchsc, refseq
+
 
 def rev_complement(seq):
     complement = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N', '-': '-'}
@@ -624,6 +626,7 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
     print("\nGathering substitution and kmer metrics per node...")
     # this function is organized in an unintuitive way. it uses a bunch of nested loops to pop between the bam and lca files line by line. 
     # it matches up bam read names and lca read names and aggregates some things per alignment, some per read, and some per node, the last of which are added into a large structure node_data.
+    # altogether this uses very little ram
 
     lcaheaderlines = 0
     with open(lcafile_path, 'r') as lcafile:
@@ -711,13 +714,14 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
                 if node not in node_data:
                     if are_pmds_in_the_bam:
                         node_data[node] = {'total_reads': 0,'pmdsover2': 0, 'pmdsover4': 0, 'meanlength': 0, 'total_alignments': 0, 
-                                       'ani': 0, 'avgdust' : 0, 'avgreadgc': 0, 'tax_path' : "", 'subs': {}, 'damagerelevantreadsp1': 0, 'damagerelevantreadsm1': 0,
-                                       'dp1' : 0, 'dm1' : 0,  'hll': hyperloglog.HyperLogLog(0.01), 'totalkmers' : 0}
+                            'ani': 0, 'avgdust' : 0, 'avgreadgc': 0, 'tax_path' : "", 'subs': {}, 'damagerelevantreadsp1': 0, 'damagerelevantreadsm1': 0,
+                            'dp1' : 0, 'dm1' : 0,  'hll': hyperloglog.HyperLogLog(0.01), 'totalkmers' : 0}
                     else:
                         node_data[node] = {'total_reads': 0,'meanlength': 0, 'total_alignments': 0, 
-                                       'ani': 0, 'avgdust' : 0, 'avgreadgc': 0, 'tax_path' : "", 'subs': {}, 'damagerelevantreadsp1': 0, 'damagerelevantreadsm1': 0,
-                                       'dp1' : 0, 'dm1' : 0, 'hll': hyperloglog.HyperLogLog(0.01), 'totalkmers' : 0}
+                            'ani': 0, 'avgdust' : 0, 'avgreadgc': 0, 'tax_path' : "", 'subs': {}, 'damagerelevantreadsp1': 0, 'damagerelevantreadsm1': 0,
+                            'dp1' : 0, 'dm1' : 0, 'hll': hyperloglog.HyperLogLog(0.01), 'totalkmers' : 0}
                         
+                # now populate/update it        
                 node_data[node]['meanlength'] = ((node_data[node]['meanlength'] * node_data[node]['total_reads']) + readlength) / (node_data[node]['total_reads'] + 1)
 
                 if dust != -1:
@@ -754,7 +758,7 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
                 if node_data[node]['tax_path'] == "":
                     try:
                         lca_index = next(i for i, entry in enumerate(lcaentry) if entry.split(":")[0].strip("'").strip('"') == node)
-                        tax_path = ','.join(lcaentry[lca_index:]).replace('\n','')
+                        tax_path = ';'.join(lcaentry[lca_index:]).replace('\n','')
                         node_data[node]['tax_path'] = tax_path
                     except StopIteration: # this should not happen
                         print(f"Error: Something weird has gone wrong. Cannot find node '{node}' in its supposed lca entry. Are there weird characters in your lca entries?")
@@ -799,7 +803,7 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
         flagsum = read.flag
         num_alignments += 1 
 
-        # go and get the mismatch table for this read if the name/md/cigar/flagsum is different to before (this is expensive, so avoid it when possible)
+        # go and get the mismatch table for this read if the name/md/cigar/flagsum is different to before (this is expensive, so there is a catch to avoid it when possible)
         if (readname != oldreadname) or (cigar != oldcigar) or (md != oldmd) or (flagsum != oldflagsum):
             subs, matches, refseq = mismatch_table(seq,cigar,md,flagsum) 
             oldcigar = cigar; oldmd = md; oldflagsum = flagsum
@@ -938,7 +942,7 @@ def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_b
             # (there is up to 1% error in the uniq kmer counting)
             ratiodup = 0
 
-        taxname = tn['tax_path'].split(",")[0].split(":")[1]
+        taxname = tn['tax_path'].split(";")[0].split(":")[1]
 
         # only now calculate damage per node from the subs dict (see output subs file)
         # do not use formatted subs ; these should be raw numbers: how many READS for this taxa have these matches/mismatches?
@@ -1006,7 +1010,6 @@ def extract_reads(in_lca, in_bam, out_bam, tax, subset_header = False, only_top_
         if result.returncode != 0:
             print(f"No matches found for keyword: {tax} or grep/awk command failed.")
             return  
-        # if you don't need to subset the header and you're happy with all the refs, this is easy.
         pysam.view("-N", tmp_file, "-b", in_bam, "-o", out_bam, catch_stdout=False)
         try:
             os.remove(tmp_file)
@@ -1045,7 +1048,7 @@ def extract_reads(in_lca, in_bam, out_bam, tax, subset_header = False, only_top_
         reference_names = set(reference_count.keys())
         header['SQ'] = [sq for sq in header.get('SQ', []) if sq['SN'] in reference_names]
 
-    # we have to re-link the reference IDs in each read row to the new header because of how the bam compression works
+    # important step: we have to re-link the reference IDs in each read row to the new header because of how the bam compression works
     ref_name_to_id = {sq['SN']: idx for idx, sq in enumerate(header.get('SQ', []))}
     # write the filtered reads with the updated header and re-linked reference IDs
     with pysam.AlignmentFile(out_bam, "wb", header=header) as bam_writer:
@@ -1076,7 +1079,7 @@ def calculate_damage_for_plot(items):
 
     other_5prime = {i: 0 for i in range(1, 16)}  # other mismatches at 5' positions (not including C>T or G>A)
     other_3prime = {i: 0 for i in range(1, 16)}  # other mismatches at 3' positions (not including C>T or G>A)
-    total_nondeam_5prime = {i: 0 for i in range(1, 16)} #  denominator : all non C>T or G>A matches or mismatches at each position
+    total_nondeam_5prime = {i: 0 for i in range(1, 16)} #  denominator part : all non C>T or G>A matches or mismatches at each position
     total_nondeam_3prime = {i: 0 for i in range(1, 16)} 
 
     for item in items:
@@ -1134,82 +1137,118 @@ def calculate_damage_for_plot(items):
     proportion_other_3prime = {i: other_3prime[i] / total_nondeam_3prime[i] if total_nondeam_3prime[i] > 0 else 0 for i in range(1, 16)}
 
     return proportion_ct_5prime, proportion_ga_5prime, proportion_ct_3prime, proportion_ga_3prime, proportion_other_5prime, proportion_other_3prime
+    
 
-
-def make_damage_plot(subs, tax, plotfile, ymax=0):
+def make_damage_plot(in_subs_list, in_subs, tax, plotfile, ymax=0):
     # just damage from the subs file; should be super fast 
 
     if not matplotlib_imported:
         print("Error: Cannot find matplotlib library for plotting. Try: pip install matplotlib")
         return
 
-    with open(subs, 'r') as f:
-        file_content = f.readlines()
+    # did we get one or more files? check they exist then parse the input style 
+    subs_files = []
+    if in_subs:
+        subs_files = in_subs
+    elif in_subs_list:
+        with open(in_subs_list, 'r') as file:
+            subs_files = [line.strip() for line in file if line.strip()]   
 
-    tax_pattern = f"^{tax}\\t" if tax.isdigit() else tax
-    matched_line = [line for line in file_content if re.match(tax_pattern, line)]
-
-    if len(matched_line) == 0:
-        matched_line = [line for line in file_content if tax.lower() in line.lower()]  # check for capitalization error
-        if len(matched_line) == 1:
-            taxstring = matched_line[0].split('\t')[:2]
-            print(f"No exact match for your input tax string in the subs file, but a close match was found and will be used: {taxstring}")
-        else:
-            raise ValueError("No matching lines found for the given tax strings in the subs file.")
-    elif len(matched_line) > 1:
-        raise ValueError("More than one matching line found. Please be more specific, e.g., by using a tax id instead of a name.")
-
-    split_line = matched_line[0].split('\t')
-    tax_id, tax_name, data_part = split_line[0], split_line[1], split_line[2]
-    data_items = data_part.split()
-
-    ctp, gap_5prime, ctm, gap_3prime, other_5prime, other_3prime = calculate_damage_for_plot(data_items)
+    # validate input files: check existence
+    for file in subs_files:
+        if not os.path.exists(file):
+            print(f"Error: File {file} does not exist.")
+            continue
 
     positions = list(range(-15, 0)) + list(range(1, 16))
-    values = {'Other': [0] * 30, 'CT': [0] * 30, 'GA': [0] * 30}
+    values_all_files = {key: [] for key in ['Other', 'CT', 'GA']}  # store data for all files
 
-    for i in range(1, 16):
-        #  (5' end)
-        values['CT'][positions.index(i)] = ctp[i]
-        values['GA'][positions.index(i)] = gap_5prime[i]
-        values['Other'][positions.index(i)] = other_5prime[i]
-        
-        # (3' end)
-        values['CT'][positions.index(-i)] = ctm[i]
-        values['GA'][positions.index(-i)] = gap_3prime[i]
-        values['Other'][positions.index(-i)] = other_3prime[i]
+    for file in subs_files:
+        with open(file, 'r') as f:
+            file_content = f.readlines()
+
+        tax_pattern = f"^{tax}\\t" if tax.isdigit() else tax
+        matched_line = [line for line in file_content if re.match(tax_pattern, line)]
+
+        if len(matched_line) == 0:
+            print(f"Warning: {file} does not contain an entry for {tax}. Skipping this file.")
+            continue
+        elif len(matched_line) > 1:
+            raise ValueError(f"More than one matching line found in {file}. Please be more specific, e.g., by using a tax ID instead of a name.")
+
+        split_line = matched_line[0].split('\t')
+        tax_id, tax_name, data_part = split_line[0], split_line[1], split_line[2]
+        data_items = data_part.split()
+
+        ctp, gap_5prime, ctm, gap_3prime, other_5prime, other_3prime = calculate_damage_for_plot(data_items)
+
+        values = {'Other': [0] * 30, 'CT': [0] * 30, 'GA': [0] * 30}
+        for i in range(1, 16):
+            # 5' 
+            values['CT'][positions.index(i)] = ctp[i]
+            values['GA'][positions.index(i)] = gap_5prime[i]
+            values['Other'][positions.index(i)] = other_5prime[i]
+
+            # 3' 
+            values['CT'][positions.index(-i)] = ctm[i]
+            values['GA'][positions.index(-i)] = gap_3prime[i]
+            values['Other'][positions.index(-i)] = other_3prime[i]
+
+        for key in values:
+            values_all_files[key].append(values[key])
+
+    if not any(values_all_files['Other']):
+        print("Warning: No valid rows found for the given tax ID.")
+        return
 
     if ymax == 0 or ymax == "0":
-        max_y = min(1.0, max(max(values['Other']), max(values['CT']), max(values['GA'])) * 1.2 )
+        max_y = min(1.0, max(max(item for sublist in values_all_files[key] for item in sublist) for key in ['Other', 'CT', 'GA']) * 1.2)
     else:
         max_y = float(ymax)
 
-    plt.figure(figsize=(10, 5))
+    # do the plotting
+
+    plt.figure(figsize=(10, 5))  
     color_palette = {'Other': '#009E73', 'CT': '#F8766D', 'GA': '#56B4E9'}  # colorblind-friendly palette
 
+    # 5' 
     ax1 = plt.subplot(1, 2, 1)
-    for key in values:
-        ax1.plot([str(pos) for pos in positions if pos > 0],
-            [values[key][i] for i, pos in enumerate(positions) if pos > 0],
-            label=key, color=color_palette[key], linewidth=2)
+    handles1 = []  # store the line handles for ax1
+    labels1 = ['Other', 'C to T', 'G to A']  # labels for legend, one entry for each damage type
+    for key in values_all_files:
+        color = color_palette[key] 
+        for j, file_values in enumerate(values_all_files[key]):
+            line, = ax1.plot([str(pos) for pos in positions if pos > 0],
+                             [file_values[i] for i, pos in enumerate(positions) if pos > 0],
+                             label=f'{key} ({subs_files[j]})', color=color, linewidth=2)
+            if j == 0: 
+                handles1.append(line)
     ax1.set_ylim(0, max_y)
-    ax1.set_xlabel('Position')
-    ax1.set_ylabel('Frequency')
+    ax1.set_xlabel('Position', fontsize=14)
+    ax1.set_ylabel('Frequency', fontsize=14)
     ax1.yaxis.set_ticks_position('left')
-    ax1.tick_params(right=False)
+    ax1.tick_params(right=False, labelsize=12)
+    ax1.tick_params(axis='x', labelsize=12)
 
+    # 3' 
     ax2 = plt.subplot(1, 2, 2)
-    for key in values:
-        ax2.plot([str(pos) for pos in positions if pos < 0],
-            [values[key][i] for i, pos in enumerate(positions) if pos < 0],
-            label=key, color=color_palette[key], linewidth=2)
+    handles2 = []  
+    for key in values_all_files:
+        color = color_palette[key] 
+        for j, file_values in enumerate(values_all_files[key]):
+            line, = ax2.plot([str(pos) for pos in positions if pos < 0],
+                             [file_values[i] for i, pos in enumerate(positions) if pos < 0],
+                             label=f'{key} ({subs_files[j]})', color=color, linewidth=2)
+            if j == 0:  
+                handles2.append(line)
     ax2.set_ylim(0, max_y)
-    ax2.set_xlabel('Position')
+    ax2.set_xlabel('Position', fontsize=14)
     ax2.yaxis.set_ticks_position('right')
-    ax2.tick_params(left=False)
-    ax2.legend(labels=['Other', 'C to T', 'G to A'], loc='upper left')
+    ax2.tick_params(left=False, labelsize=12)
 
-    plt.suptitle(f'Damage Plot for {tax_name} (Tax ID: {tax_id})')
+    ax2.legend(handles=handles2, labels=labels1, loc='upper left', fontsize=12) # legend
+
+    plt.suptitle(f'Damage Plot for {tax_name} (tax ID {tax_id})', fontsize=18)
     plt.tight_layout(rect=[0, 0, 1, 0.95])
 
     file_extension = os.path.splitext(plotfile)[1].lower()
@@ -1223,98 +1262,120 @@ def make_damage_plot(subs, tax, plotfile, ymax=0):
     plt.close()
 
 
-
-def make_baminfo_plot(in_bam, plotfile):
+def make_baminfo_plot(in_bam, in_bam_list, plotfile):
 
     if matplotlib_imported == False:
         print(f"Error: Cannot find matplotlib library for plotting. Try: pip install matplotlib")
         return
-
-    bamfile = pysam.AlignmentFile(in_bam, "rb",require_index=False)
     
-    mismatch_counts = {}  
-    read_length_counts = {}  
-    
-    current_readname = None
-    mismatch_bins = {}  
-    alignment_count = 0
-    current_read_length = 0
-    total_reads = 0
+    if in_bam:
+        bamfiles = in_bam if isinstance(in_bam, list) else [in_bam]
+    elif in_bam_list:
+        with open(in_bam_list, 'r') as file:
+            bamfiles = [line.strip() for line in file if line.strip()]
+    else:
+        raise ValueError("Either --in_bam or --in_bam_list must be provided.")
+    if not all(isinstance(b, str) for b in bamfiles):
+        raise TypeError(f"bamfiles contains non-string elements: {bamfiles}")
 
-    for read in bamfile:
-        readname = read.query_name
+    mismatch_counts_all = []
+    read_length_counts_all = []
 
-        if readname != current_readname:
-            if current_readname is not None:
-                for mismatch_bin, count in mismatch_bins.items():
-                    fraction = count / alignment_count
-                    if mismatch_bin not in mismatch_counts:
-                        mismatch_counts[mismatch_bin] = fraction
+    for bam_file in bamfiles:
+        bamfile = pysam.AlignmentFile(bam_file, "rb", require_index=False)
+
+        mismatch_counts = {}  
+        read_length_counts = {}  
+        current_readname = None
+        mismatch_bins = {}  
+        alignment_count = 0
+        current_read_length = 0
+        total_reads = 0
+
+        for read in bamfile:
+            readname = read.query_name
+
+            if readname != current_readname:
+                if current_readname is not None:
+                    for mismatch_bin, count in mismatch_bins.items():
+                        fraction = count / alignment_count
+                        if mismatch_bin not in mismatch_counts:
+                            mismatch_counts[mismatch_bin] = fraction
+                        else:
+                            mismatch_counts[mismatch_bin] += fraction
+
+                    if current_read_length not in read_length_counts:
+                        read_length_counts[current_read_length] = 1
                     else:
-                        mismatch_counts[mismatch_bin] += fraction
+                        read_length_counts[current_read_length] += 1
 
-                if current_read_length not in read_length_counts:
-                    read_length_counts[current_read_length] = 1
-                else:
-                    read_length_counts[current_read_length] += 1
+                    total_reads += 1
 
-                total_reads += 1
+                current_readname = readname
+                mismatch_bins = {}  
+                alignment_count = 0
+                current_read_length = read.query_length
 
-            current_readname = readname
-            mismatch_bins = {}  
-            alignment_count = 0
-            current_read_length = read.query_length
-
-        mismatches = read.get_tag("NM") if read.has_tag("NM") else 0
-        if mismatches not in mismatch_bins:
-            mismatch_bins[mismatches] = 1
-        else:
-            mismatch_bins[mismatches] += 1
-
-        alignment_count += 1
-
-    if current_readname is not None:
-        for mismatch_bin, count in mismatch_bins.items():
-            fraction = count / alignment_count
-            if mismatch_bin not in mismatch_counts:
-                mismatch_counts[mismatch_bin] = fraction
+            mismatches = read.get_tag("NM") if read.has_tag("NM") else 0
+            if mismatches not in mismatch_bins:
+                mismatch_bins[mismatches] = 1
             else:
-                mismatch_counts[mismatch_bin] += fraction
+                mismatch_bins[mismatches] += 1
 
-        if current_read_length not in read_length_counts:
-            read_length_counts[current_read_length] = 1
-        else:
-            read_length_counts[current_read_length] += 1
+            alignment_count += 1
 
-        total_reads += 1
+        if current_readname is not None:
+            for mismatch_bin, count in mismatch_bins.items():
+                fraction = count / alignment_count
+                if mismatch_bin not in mismatch_counts:
+                    mismatch_counts[mismatch_bin] = fraction
+                else:
+                    mismatch_counts[mismatch_bin] += fraction
 
-    bamfile.close()
+            if current_read_length not in read_length_counts:
+                read_length_counts[current_read_length] = 1
+            else:
+                read_length_counts[current_read_length] += 1
 
-    x_mismatch_values = sorted(mismatch_counts.keys())
-    y_mismatch_values = [mismatch_counts[x] / total_reads for x in x_mismatch_values]
+            total_reads += 1
 
-    x_readlength_values = sorted(read_length_counts.keys())
-    y_readlength_values = [read_length_counts[x] for x in x_readlength_values]
+        bamfile.close()
 
-    plt.figure(figsize=(10, 5))
+        # Add the results to the overall dictionaries for all files
+        mismatch_counts_all.append(mismatch_counts)
+        read_length_counts_all.append(read_length_counts)
 
-    plt.subplot(1, 2, 1)
-    plt.plot(x_mismatch_values, y_mismatch_values, marker='o', linestyle='-', color='#009E73')
-    plt.xlabel("Number of mismatches")
-    plt.ylabel("Frequency (per read)")
-    plt.title("Mismatch Frequency Plot")
-    plt.xticks(x_mismatch_values)
-    plt.grid(False)
+    # Plotting 
+    plt.figure(figsize=(10, 5)) 
 
-    plt.subplot(1, 2, 2)
-    plt.plot(x_readlength_values, y_readlength_values, marker='o', linestyle='-', color='#CC79A7')
-    plt.xlabel("Read length")
-    plt.ylabel("Number of reads")
-    plt.title("Read Length Distribution")
-    plt.grid(False)
+    # Mismatch Frequency Plot
+    ax1 = plt.subplot(1, 2, 1)
+    mismatch_color = '#009E73'  # Consistent color for the mismatch plot
+    for i, bam_file in enumerate(bamfiles):
+        mismatch_dict = mismatch_counts_all[i]
+        x_vals = sorted(mismatch_dict.keys())
+        y_vals = [mismatch_dict[x] for x in x_vals]
+        ax1.plot(x_vals, y_vals, linestyle='-', label=os.path.basename(bam_file), color=mismatch_color, linewidth=2)
+    ax1.set_xlabel("Number of mismatches", fontsize=12)
+    ax1.set_ylabel("Frequency (per read)", fontsize=12)
+    ax1.set_title("Mismatch Frequency Plot", fontsize=16)
+    ax1.grid(False)
 
+    # Read Length Distribution
+    ax2 = plt.subplot(1, 2, 2)
+    readlength_color = '#CC79A7'  # Consistent color for the read length plot
+    for i, bam_file in enumerate(bamfiles):
+        readlen_dict = read_length_counts_all[i]
+        x_vals = sorted(readlen_dict.keys())
+        y_vals = [readlen_dict[x] for x in x_vals]
+        ax2.plot(x_vals, y_vals, linestyle='-', label=os.path.basename(bam_file), color=readlength_color, linewidth=2)
+    ax2.set_xlabel("Read length", fontsize=12)
+    ax2.set_ylabel("Number of reads", fontsize=12)
+    ax2.set_title("Read Length Distribution", fontsize=16)
+    ax2.grid(False)
+
+    # Save the plot
     plt.tight_layout()
-
     file_extension = os.path.splitext(plotfile)[1].lower()
     if file_extension == '.pdf':
         plt.savefig(plotfile, format='pdf')
@@ -1324,6 +1385,7 @@ def make_baminfo_plot(in_bam, plotfile):
         plt.savefig(plotfile)
 
     plt.close()
+
 
 
 def parse_exclude_keywords(args):
@@ -1372,7 +1434,7 @@ def tsvs_to_matrix(parsed_data, output_file, include='all', minreads=50):
         print(f"Processing sample: {sample_name} with {len(records)} records.")
         for record in records:
             taxpath = record[-1]  
-            tax = taxpath.split(',')[0].strip('"')
+            tax = taxpath.split(';')[0].strip('"')
             if tax not in tax_data:
                 tax_data[tax] = {
                     'TaxPath': taxpath,
@@ -1455,7 +1517,6 @@ def make_krona_xml(in_tsv, in_tsv_files, out_xml, minreads, maxdamage):
         with open(in_tsv_files, 'r') as file:
             input_files = [line.strip() for line in file if line.strip()]   
 
-
     # validate input files: check existence, header format, and minreads threshold
     valid_files = []
     for file in input_files:
@@ -1513,8 +1574,10 @@ def make_krona_xml(in_tsv, in_tsv_files, out_xml, minreads, maxdamage):
             levels_found = set()
             for line in lines[1:]:  
                 fields = line.strip().split('\t')
+                if int(fields[2]) < minreads:
+                    break
                 taxpath = fields[taxpath_col]
-                first_node = taxpath.split(',')[0]
+                first_node = taxpath.split(';')[0]
                 level = first_node.split(':')[2].strip('"')
                 levels_found.add(level)
             toplevel = None
@@ -1528,18 +1591,18 @@ def make_krona_xml(in_tsv, in_tsv_files, out_xml, minreads, maxdamage):
 
         for line in lines[1:]:  # skip the header
             fields = line.strip().split('\t')
-            reads = int(fields[2]); 
+            reads = float(fields[2]);
+            if reads < minreads:
+                break # you're done with this file
             dup = float(fields[3]); dust = float(fields[4]); damage = float(fields[5]); lengths = float(fields[7])
             taxpath = fields[-1].strip('"').strip("'") # 16 used to be -1
-            taxpathsplit = taxpath.split(",")
+            taxpathsplit = taxpath.split(";")
             fullnode = taxpathsplit[0].split(":")
             taxid = fullnode[0]
             taxname = fullnode[1]
             level = fullnode[2]
             if toplevel not in taxpath:
                 continue # skip this line, i don't need to deal with this rare weird case.
-            if reads < minreads:
-                break # you're done with this file
             if reads >= minreads:
                 if taxid not in tree: # add a new node to the tree structure if it's not already there
                     tree[taxid] = {
@@ -1551,7 +1614,7 @@ def make_krona_xml(in_tsv, in_tsv_files, out_xml, minreads, maxdamage):
                 else: # otherwise just add this sample info in
                     if sample_name not in tree[taxid]['samples']:
                         tree[taxid]['samples'][sample_name] = {'reads': reads, 'duplicity': dup, 'dust': dust, 'damage': damage, 'length': lengths}
-                    # else:  # this should not happen 
+                    # else:  # this should not ever happen anymore
                         # print(f"Warning: The file {sample_name} has two lines for the same tax id {taxid}, or this file is in your list more than once.")
                 if level != toplevel:
                         # attach it to its parent ; make the parent to attach it to if needed
@@ -1666,6 +1729,8 @@ def make_krona_xml(in_tsv, in_tsv_files, out_xml, minreads, maxdamage):
                 node_str += f"<val>{value}</val>"
             node_str += f"</{attr}>\n"
 
+        node_str += f"{indent}\t<taxid><val>{node_id}</val></taxid>\n" # add the tax id too 
+
         for child_id in node_data["children"]:
             node_str += add_node_to_xml(child_id, tree, indent_level + 1)
         
@@ -1680,6 +1745,7 @@ def make_krona_xml(in_tsv, in_tsv_files, out_xml, minreads, maxdamage):
         file.write("\t\t<attribute display=\"Duplicity\">duplicity</attribute>\n")
         file.write("\t\t<attribute display=\"Dust\">dust</attribute>\n")
         file.write("\t\t<attribute display=\"Mean Read Length\">length</attribute>\n")
+        file.write("\t\t<attribute display=\"Tax ID\">taxid</attribute>\n")
         file.write("\t</attributes>\n")
         file.write(f'\t<color attribute="reads" valueStart="0" valueEnd="{overall_max_reads}" hueStart="120" hueEnd="240"></color>\n')
         file.write(f'\t<color attribute="damage" valueStart="0" valueEnd="{overall_max_damage}" hueStart="0" hueEnd="240"></color>\n')
@@ -1698,7 +1764,7 @@ def make_krona_xml(in_tsv, in_tsv_files, out_xml, minreads, maxdamage):
             try:
                 file.write(add_node_to_xml(root_taxid, tree))
             except RecursionError:
-                print(f"There was a recursion error for {root_taxid}. We will skip it. If your tree is truly ginormous, you can increase the recursion limit at the beginning of this function.")
+                print(f"There was a recursion error for {root_taxid}. We will skip it. If your tree is truly ginormous, you can increase the default recursion limit.")
                 continue
 
         file.write("</krona>\n")
@@ -1709,14 +1775,14 @@ def shrink(args):
     formatted_exclude_keywords = parse_exclude_keywords(args)
     lca_file_type = find_lca_type(args.in_lca)
     if(lca_file_type == "metadmg"):
-        print("You are running bamdam shrink with a metadmg-style lca file. This is ok, but be aware the output lca file will be in ngsLCA lca file format, as all the other functions in bamdam require this format.")
+        print("You are running bamdam shrink with a metaDMG-style lca file. This is ok, but be aware the output lca file will be in ngsLCA lca file format, as all the other functions in bamdam require this format.")
     shortlcalines = write_shortened_lca(args.in_lca, args.out_lca, args.upto, args.mincount, formatted_exclude_keywords, lca_file_type)
     write_shortened_bam(args.in_bam, args.out_lca, args.out_bam, args.stranded, args.minsim, args.annotate_pmd, shortlcalines)
 
 def compute(args):
     lca_file_type = find_lca_type(args.in_lca)
     if(lca_file_type == "metadmg"):
-        print("Error: It looks like you're trying to run bamdam compute with a metadmg-style lca file. Please use an ngsLCA-style lca file.")
+        print("Error: It looks like you're trying to run bamdam compute with a metaDMG-style lca file. Please use an ngsLCA-style lca file.")
         sys.exit()
     nodedata, pmds_in_bam = gather_subs_and_kmers(args.in_bam, args.in_lca, kn=args.k, upto=args.upto, stranded=args.stranded)
     parse_and_write_node_data(nodedata, args.out_tsv, args.out_subs, args.stranded, pmds_in_bam)  
@@ -1724,15 +1790,15 @@ def compute(args):
 def extract(args):
     lca_file_type = find_lca_type(args.in_lca)
     if(lca_file_type == "metadmg"):
-        print("Error: It looks like you're trying to run bamdam extract with a metadmg-style lca file. Please use an ngsLCA-style lca file.")
+        print("Error: It looks like you're trying to run bamdam extract with a metaDMG-style lca file. Please use an ngsLCA-style lca file.")
         sys.exit()
     extract_reads(args.in_lca, args.in_bam, args.out_bam, args.keyword, args.subset_header, args.only_top_ref)
 
 def plotdamage(args):
-    make_damage_plot(args.in_subs, args.tax, args.outplot, args.ymax)
+    make_damage_plot(args.in_subs_list, args.in_subs, args.tax, args.outplot, args.ymax)
 
 def plotbaminfo(args):
-    make_baminfo_plot(args.in_bam, args.outplot)
+    make_baminfo_plot(args.in_bam, args.in_bam_list, args.outplot)
 
 def combine(args):
     # parse real quick
@@ -1803,7 +1869,9 @@ def main():
 
     # Plot damage
     parser_plotdamage = subparsers.add_parser('plotdamage', help="Produces a postmortem damage plot for a specified taxonomic node using the subs file.")
-    parser_plotdamage.add_argument("--in_subs", type=str, required=True, help="Path to the subs file produced by bamdam compute (required)")
+    group_input_plotdamage = parser_plotdamage.add_mutually_exclusive_group(required=True)
+    group_input_plotdamage.add_argument("--in_subs", nargs='+', help="Input subs file(s)")
+    group_input_plotdamage.add_argument("--in_subs_list", help="Path to a text file contaning input subs files, one per line")
     parser_plotdamage.add_argument("--tax", type=str, required=True, help="Taxonomic node ID (required)")
     parser_plotdamage.add_argument("--outplot", type=str, default="damage_plot.png", help="Filename for the output plot, ending in .png or .pdf (default: damage_plot.png)")
     parser_plotdamage.add_argument("--ymax", type=str, default="0", help="Maximum for y axis (optional)")
@@ -1811,7 +1879,9 @@ def main():
 
     # Plot bam info
     parser_plotbaminfo = subparsers.add_parser('plotbaminfo', help="Produces a mismatch and read length distribution plot for an input bam.")
-    parser_plotbaminfo.add_argument("--in_bam", type=str, required=True, help="Path to the BAM file (required)")
+    group_input_plotbaminfo = parser_plotbaminfo.add_mutually_exclusive_group(required=True)
+    group_input_plotbaminfo.add_argument("--in_bam", nargs='+', help="Input bam file(s)")
+    group_input_plotbaminfo.add_argument("--in_bam_list", help="Path to a text file containing input bams, one per line")
     parser_plotbaminfo.add_argument("--outplot", type=str, default="baminfo_plot.png", help="Filename for the output plot, ending in .png or .pdf (default: baminfo_plot.png)")
     parser_plotbaminfo.set_defaults(func=plotbaminfo)
 
@@ -1819,7 +1889,7 @@ def main():
     parser_combine = subparsers.add_parser(
         'combine', help="Combine multiple bamdam tsv files to generate a multi-sample tsv.")
     group_input_combine = parser_combine.add_mutually_exclusive_group(required=True)
-    group_input_combine.add_argument("--in_tsv", nargs='+', help="List of input tsv files")
+    group_input_combine.add_argument("--in_tsv", nargs='+', help="List of input tsv file(s)")
     group_input_combine.add_argument("--in_tsv_list", help="Path to a text file containing paths to input tsv files, one per line")
     parser_combine.add_argument("--out_tsv", type=str, default="combined.tsv", help="Path to output tsv file name (default: combined.tsv)")
     parser_combine.add_argument("--minreads", type=float, default=50, help="Minimum reads across samples to include taxa (default: 50)")
@@ -1860,8 +1930,6 @@ def main():
         parser.error(f"Invalid float value for minsim: {args.minsim}")
     if hasattr(args, 'in_lca') and not os.path.exists(args.in_lca):
         parser.error(f"Input LCA path does not exist: {args.in_lca}")
-    if hasattr(args, 'in_bam') and not os.path.exists(args.in_bam):
-        parser.error(f"Input BAM path does not exist: {args.in_bam}")
     if hasattr(args, 'upto') and args.upto=="clade":
         parser.error(f"Clade is not a valid taxonomic level in bamdam because there can be multiple clades in one taxonomic path.")
     if hasattr(args, 'upto') and "sub" in args.upto:
@@ -1878,6 +1946,12 @@ def main():
 
     if hasattr(args, 'in_tsv') and hasattr(args, 'in_tsv_list') and args.in_tsv is not None and args.in_tsv_list is not None:
         raise ValueError("You cannot specify both --in_tsv and --in_tsv_list at the same time. Use one or the other.")
+    if hasattr(args, 'in_subs') and hasattr(args, 'in_subs_list') and args.in_subs is not None and args.in_subs_list is not None:
+        raise ValueError("You cannot specify both --in_subs and --in_subs_list at the same time. Use one or the other.")
+    if hasattr(args, 'in_bams') and hasattr(args, 'in_bam_list') and args.in_bam is not None and args.in_bam_list is not None:
+        raise ValueError("You cannot specify both --in_bam and --in_bam_list at the same time. Use one or the other.")
+
+
     if hasattr(args, 'minreads') and args.minreads < 0:
         raise ValueError("Min reads must be a non-negative integer.")
     if hasattr(args, 'include'):
