@@ -30,6 +30,7 @@ chmod +x bamdam
   - [plotbaminfo](#plotbaminfo)
   - [krona](#krona)
 - [Tutorial](#tutorial)
+- [Contributing](#contributing)
 
 ## <a name="description"></a>Description
 
@@ -276,6 +277,74 @@ Lastly we create a set of interactive, damage-coloured Krona plots by converting
 ktImportXML -o microbes.html microbes.xml
 ```
 Once you get the html file, you can open it in any web browser. Make sure to click "Colour by damage" in the bottom left!
+
+## <a name="contributing"></a>Contributing
+Contributions are welcome, and they are greatly appreciated! Every little bit helps, and credit will always be given.
+
+### Pull Request Guidelines
+To update the documentation, fix bugs or add new features you need to create a Pull Request . A PR is a change you make to your local copy of the code for us to review and potentially integrate into the code base.
+
+To create a Pull Request you need to do these steps:
+
+1. Create a Github account.
+
+2. Fork the repository.
+
+3. Clone your fork locally.
+
+4. Go to the created bamdam folder with cd bamdam.
+
+5. Create a new branch with `git checkout -b <descriptive_branch_name>`.
+
+6. Make your changes to the code or documentation.
+
+
+7. Run `git add .` to add all the changed files to the commit (to see what files will be added you can run `git add . --dry-run`).
+
+8. To commit the added files use `git commit`. (This will open a command line editor to write a commit message. These should have a descriptive 80 line header, followed by an empty line, and then a description of what you did and why. To use your command line text editor of choice use (for example) export GIT_EDITOR=vim before running git commit). Please follow the [Conventional Commits guidelines](https://www.conventionalcommits.org/en/v1.0.0/#summary). 
+
+9. Now you can push your changes to your Github copy of bamdam by running `git push origin <descriptive_branch_name>`.
+
+10. If you now go to the webpage for your Github copy of bamdam you should see a link in the sidebar called “Create Pull Request”.
+
+11. Now you need to choose your PR from the menu and click the “Create pull request” button. Be sure to change the pull request target branch to <descriptive_branch_name>!
+
+12. If you want to create more pull requests, first run `git checkout main` and then start at step 5. with a new branch name.
+
+Feel free to ask questions about this if you want to contribute to bamdam :)
+
+### Development with pixi
+[pixi](https://pixi.sh/) is a tool that is designed to help you manage 
+your development environment. It acts as a drop-in replacement for
+[conda](https://docs.conda.io/en/latest/), offering:
+
+- **Easy installation & Updating**: [install pixi](https://pixi.sh/latest/#installation)
+  through many methods and for different shells.
+  Updating ``pixi`` is as simple as ``pixi self-update``
+
+- **Ease of Use**: A streamlined CLI (similar to Yarn or Cargo) for quick
+  environment creation and management. Try commands like ``pixi init``,
+  ``pixi add <package>``, or ``pixi run`` to see how intuitive it is.
+
+- **Multiple Environments**: Define and switch between multiple sets of
+  dependencies under one project.
+  Pixi uses a ``feature`` system to compose an ``environment``.
+  Think of ``features`` as a way to group dependencies and settings together.
+  and an environment is a collection of features.
+  This allows easy management of different environments for multiple use.
+  See the ``pyproject.toml`` file for an example of how the ``test`` feature
+  is used to define the ``dev``, ``py311`` and ``py312`` environments.
+
+- **Cross-Platform Solving**: Target Linux, macOS, and Windows from a single
+  config. Pixi resolves the correct packages for each platform and captures
+  them in a lockfile for reproducible setups—no Docker needed.
+
+- **Speed & Conda Compatibility**: Written in Rust, Pixi downloads and solves
+  packages in parallel for faster operations. It uses the Conda ecosystem
+  and channels, so you get the same packages with improved performance. In
+  many cases, Pixi can outperform both Conda and Mamba.
+
+To learn more, visit the [Pixi docs](https://pixi.sh).
 
 ## License
 This project is licensed under the MIT License - see the LICENSE file for details.
