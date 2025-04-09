@@ -1,23 +1,29 @@
 ## <a name="quickstart"></a>Quick start
 
+### Installation
+- From [PyPi](https://pypi.org/project/bamdam/):
+```console
+pip install bamdam 
 ```
-# install dependencies (tqdm is not strictly necessary)
-pip install pysam hyperloglog matplotlib tqdm  
-
-# install bamdam
+- From source:
+```console
 git clone https://github.com/bdesanctis/bamdam.git
 cd bamdam
-chmod +x bamdam
+pip install .
+```
+### Usage
 
+See [usage](#use) below for full documentation.
+
+```console
 # help
-./bamdam -h
-./bamdam shrink -h 
+bamdam -h
+bamdam shrink -h 
 
 # run
-./bamdam shrink --in_bam A.bam --in_lca A.lca --out_bam A2.bam --out_lca A2.lca --stranded ds  # (ds = double stranded library prep)
-./bamdam compute --in_bam A2.bam --in_lca A2.lca --out_tsv A_tsv.txt --out_subs A_subs.txt --stranded ds
+bamdam shrink --in_bam A.bam --in_lca A.lca --out_bam A2.bam --out_lca A2.lca --stranded ds  # (ds = double stranded library prep)
+bamdam compute --in_bam A2.bam --in_lca A2.lca --out_tsv A_tsv.txt --out_subs A_subs.txt --stranded ds
 ```
-
 ## Table of Contents
 - [Quick start](#quickstart)
 - [Description](#description)
@@ -40,7 +46,9 @@ The first two functions are bamdam **shrink** and bamdam **compute**. When mappi
 
 The rest of the functions operate on the output of bamdam **shrink** and **compute**. The **extract** command extracts reads assigned to a specific taxonomic node from a bam file into another bam file for downstream analyses, optionally detecting the top reference for that node. The **plotdamage** command uses the subs file(s), a secondary output from bamdam compute, to quickly produce a postmortem damage "smiley" plot for a specified taxonomic node. The **plotbaminfo** command takes a bam file as input (e.g. from bamdam extract), and plots the mismatch and read length distributions. The **combine** command takes multiple tsv files to create a multi-sample abundance/damage/etc matrix. Lastly the **krona** command converts one or more (optionally pre-filtered) bamdam tsv files into XMLs which can be imported into [KronaTools](https://github.com/marbl/Krona) to make interactive Krona plots, in which each taxa is coloured by its 5' C-to-T misincorporation frequency, and additional information such as duplicity and mean read length per taxa is embedded. [See an example here](https://bdesanctis.github.io/bamdam/example/microbe_krona.html)  (make sure to click "Color by Damage" on the left).
 
-Bamdam is not particularly optimized for speed, and doesn't support threading (much of the effort is spent on bam file I/O). On the other hand, it reads and writes bams line-by-line, so it shouldn't need too much RAM (usually <8GB). A 50GB shotgun sequencing bam file takes a few hours on my laptop, and this should scale roughly linearly, with higher runtimes expected for capture or highly informative data. 
+Bamdam is not particularly optimized for speed, and doesn't support threading (much of the effort is spent on bam file I/O). On the other hand, it reads and writes bams line-by-line, so it shouldn't need too much RAM (usually <8GB). A 50GB shotgun sequencing bam file takes a few hours on my laptop, and this should scale roughly linearly, with higher runtimes expected for capture or highly informative data.
+
+![bamdam workflow figure](docs/assets/workflowfigure.jpg "bamdam workflow")
 
 ## <a name="use"></a>Usage
 
