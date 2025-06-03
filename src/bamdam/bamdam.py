@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 # bamdam by Bianca De Sanctis, bddesanctis@gmail.com  
-# last updated mar 18 2025
+# WORKING VERSION; last updated may 5 2025
+# since last git commit: added GC content and more averaging to the combine function, fixed ^Ms at ends of tsv file lines, added an empty lca error catch
 
 import sys 
 import re
@@ -70,7 +71,11 @@ def find_lca_type(original_lca_path):
     with open(original_lca_path,'r') as file:
         for _ in range(lcaheaderlines):
             next(file)
-        firstline = next(file)
+        try:
+            firstline = next(file)
+        except StopIteration:
+            print("\nError: LCA file contains no data lines after header.")
+            sys.exit()
         line = firstline.split('\t')
         # line[1] is the first tax id in an ngslca-style format, and the full read in metadmg-style format.
         if ":" in line[1]:
@@ -918,10 +923,22 @@ def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_b
                    'UniqueKmers', 'RatioDupKmers', 'TotalAlignments', 'PMDsover2', 'PMDSover4','taxpath'] 
     else:
         header = ['TaxNodeID', 'TaxName', 'TotalReads','Duplicity', 'MeanDust','Damage+1', 'Damage-1','MeanLength', 'ANI','AvgReadGC','AvgRefGC',
-                   'UniqueKmers', 'RatioDupKmers', 'TotalAlignments', 'taxpath'] 
-    statsfile.write('\t'.join(header) + '\n')
-    writer = csv.writer(statsfile, delimiter='\t', quotechar='"', quoting=csv.QUOTE_NONNUMERIC)
-    subswriter = csv.writer(subsfile, delimiter='\t', quotechar='"', quoting=csv.QUOTE_NONE)
+                   'UniqueKmers', 'RatioDupKmers', 'TotalAlignments', 'taxpath']
+    statsfile.write("\t".join(header) + "\n")
+    writer = csv.writer(
+        statsfile,
+        delimiter="\t",
+        quotechar='"',
+        quoting=csv.QUOTE_NONNUMERIC,
+        lineterminator="\n",
+    )
+    subswriter = csv.writer(
+        subsfile,
+        delimiter="\t",
+        quotechar='"',
+        quoting=csv.QUOTE_NONE,
+        lineterminator="\n",
+    )
 
     rows = []
     subsrows = {}
@@ -1428,6 +1445,7 @@ def tsvs_to_matrix(parsed_data, output_file, include='all', minreads=50):
     include_duplicity = 'duplicity' in include or 'all' in include
     include_dust = 'dust' in include or 'all' in include
     include_taxpath = 'taxpath' in include or 'all' in include
+    include_gc = "gc" in include or "all" in include
 
     tax_data = {}
     for sample_name, records in parsed_data.items():  # parsed_data is a dict: {sample_name: records}
@@ -1436,46 +1454,88 @@ def tsvs_to_matrix(parsed_data, output_file, include='all', minreads=50):
 
         print(f"Processing sample: {sample_name} with {len(records)} records.")
         for record in records:
-            taxpath = record[-1]  
+            taxpath = record[-1]
             tax = taxpath.split(';')[0].strip('"')
             if tax not in tax_data:
                 tax_data[tax] = {
-                    'TaxPath': taxpath,
-                    'samples': {},
-                    'TotalReads': 0,
-                    'WeightedDamage': 0 if include_damage else None,
-                    'WeightSum': 0  
+                    "TaxPath": taxpath,
+                    "samples": {},
+                    "TotalReads": 0,
+                    "WeightedDamage": 0 if include_damage else None,
+                    "WeightedDust": 0 if include_dust else None,
+                    "WeightedDup": 0 if include_duplicity else None,
+                    "WeightedReadGC": 0 if include_gc else None,
+                    "WeightedRefGC": 0 if include_gc else None,
+                    "WeightSum": 0,
                 }
 
             sample_data = {
-                'reads': int(record[2]),  
-                'damage': float(record[5]) if include_damage else None,
-                'duplicity': float(record[3]) if include_duplicity else None,
-                'dust': float(record[4]) if include_dust else None,
+                "reads": int(record[2]),
+                "damage": float(record[5]) if include_damage else None,
+                "duplicity": float(record[3]) if include_duplicity else None,
+                "dust": float(record[4]) if include_dust else None,
+                "avg_read_gc": float(record[9]) if include_gc else None,
+                "avg_ref_gc": float(record[10]) if include_gc else None,
             }
             tax_data[tax]['samples'][sample_name] = sample_data
             tax_data[tax]['TotalReads'] += sample_data['reads']
+            tax_data[tax]["WeightSum"] += sample_data["reads"]
             if include_damage and sample_data['damage'] is not None:
                 tax_data[tax]['WeightedDamage'] += sample_data['damage'] * sample_data['reads']
-            tax_data[tax]['WeightSum'] += sample_data['reads']
+            if include_dust and sample_data["dust"] is not None:
+                tax_data[tax]["WeightedDust"] += (
+                    sample_data["dust"] * sample_data["reads"]
+                )
+            if include_duplicity and sample_data["duplicity"] is not None:
+                tax_data[tax]["WeightedDup"] += (
+                    sample_data["duplicity"] * sample_data["reads"]
+                )
+            if include_gc and sample_data["avg_read_gc"] is not None:
+                tax_data[tax]["WeightedReadGC"] += (
+                    sample_data["avg_read_gc"] * sample_data["reads"]
+                )
+            if include_gc and sample_data["avg_ref_gc"] is not None:
+                tax_data[tax]["WeightedRefGC"] += (
+                    sample_data["avg_ref_gc"] * sample_data["reads"]
+                )
 
     for tax, data in tax_data.items():
         if include_damage and data['WeightSum'] > 0:
             data['MeanDamage'] = data['WeightedDamage'] / data['WeightSum']
         else:
             data['MeanDamage'] = 'NA'
+        if include_dust and data["WeightSum"] > 0:
+            data["MeanDust"] = data["WeightedDust"] / data["WeightSum"]
+        else:
+            data["MeanDust"] = "NA"
+        if include_duplicity and data["WeightSum"] > 0:
+            data["MeanDup"] = data["WeightedDup"] / data["WeightSum"]
+        else:
+            data["MeanDup"] = "NA"
+        if include_gc and data["WeightSum"] > 0:
+            data["MeanReadGC"] = data["WeightedReadGC"] / data["WeightSum"]
+            data["MeanRefGC"] = data["WeightedRefGC"] / data["WeightSum"]
+        else:
+            data["MeanReadGC"] = "NA"
+            data["MeanRefGC"] = "NA"
 
     tax_data = {tax: data for tax, data in tax_data.items() if data['TotalReads'] >= minreads}
     sorted_tax_data = sorted(tax_data.items(), key=lambda x: x[1]['TotalReads'], reverse=True)
 
-    with open(output_file, 'w') as outfile:
-
+    with open(output_file, "w") as outfile:
         header = ['Tax', 'TotalReads']
         if include_damage:
             header.append('MeanDamage')
-        for sample_name in sorted(list(parsed_data.keys())):
+        if include_duplicity:
+            header.append("MeanDup")
+        if include_dust:
+            header.append("MeanDust")
+        if include_gc:
+            header.append("MeanReadGC")
+            header.append("MeanRefGC")
+        for sample_name in sorted(parsed_data.keys()):
             if sample_name.endswith('.tsv'):
-                sample_name = sample_name.replace('.tsv', '')  
+                sample_name = sample_name.replace(".tsv", "")
             header.append(f"{sample_name}_reads")
             if include_damage:
                 header.append(f"{sample_name}_damage")
@@ -1483,27 +1543,65 @@ def tsvs_to_matrix(parsed_data, output_file, include='all', minreads=50):
                 header.append(f"{sample_name}_duplicity")
             if include_dust:
                 header.append(f"{sample_name}_dust")
+            if include_gc:
+                header.append(f"{sample_name}_avgreadgc")
+                header.append(f"{sample_name}_avgrefgc")
         if include_taxpath:
-            header.append('TaxPath') 
-        outfile.write('\t'.join(header) + '\n')  
+            header.append("TaxPath")
+        outfile.write("\t".join(header) + "\n")
 
         for tax, data in sorted_tax_data:
             row = [tax, str(data['TotalReads'])]
             if include_damage:
-                row.append(str(round(data['MeanDamage'],3)))
+                row.append(str(round(data["MeanDamage"], 3)))
+            if include_duplicity:
+                row.append(
+                    str(round(data["MeanDup"], 3))
+                    if isinstance(data["MeanDup"], float)
+                    else "NA"
+                )
+            if include_dust:
+                row.append(
+                    str(round(data["MeanDust"], 3))
+                    if isinstance(data["MeanDust"], float)
+                    else "NA"
+                )
+            if include_gc:
+                row.append(
+                    str(round(data["MeanReadGC"], 3))
+                    if isinstance(data["MeanReadGC"], float)
+                    else "NA"
+                )
+                row.append(
+                    str(round(data["MeanRefGC"], 3))
+                    if isinstance(data["MeanRefGC"], float)
+                    else "NA"
+                )
+
             for sample_name in sorted(parsed_data.keys()):
                 if sample_name.endswith('.tsv'):
-                    sample_name = sample_name.replace('.tsv', '')  
+                    sample_name = sample_name.replace(".tsv", "")
                 sample_data = data['samples'].get(sample_name, {})
-                row.append(str(sample_data.get('reads', 0)))  
+                row.append(str(sample_data.get("reads", 0)))
                 if include_damage:
                     row.append(str(sample_data.get('damage')) if sample_data.get('damage') is not None else 'NA')
                 if include_duplicity:
                     row.append(str(sample_data.get('duplicity')) if sample_data.get('duplicity') is not None else 'NA')
                 if include_dust:
                     row.append(str(sample_data.get('dust')) if sample_data.get('dust') is not None else 'NA')
+                if include_gc:
+                    row.append(
+                        str(sample_data.get("avg_read_gc"))
+                        if sample_data.get("avg_read_gc") is not None
+                        else "NA"
+                    )
+                    row.append(
+                        str(sample_data.get("avg_ref_gc"))
+                        if sample_data.get("avg_ref_gc") is not None
+                        else "NA"
+                    )
             if include_taxpath:
-                row.append(data['TaxPath'])  
+                row.append(data["TaxPath"])
             outfile.write('\t'.join(row) + '\n')
 
 
@@ -1896,7 +1994,13 @@ def main():
     group_input_combine.add_argument("--in_tsv_list", help="Path to a text file containing paths to input tsv files, one per line")
     parser_combine.add_argument("--out_tsv", type=str, default="combined.tsv", help="Path to output tsv file name (default: combined.tsv)")
     parser_combine.add_argument("--minreads", type=float, default=50, help="Minimum reads across samples to include taxa (default: 50)")
-    parser_combine.add_argument("--include", nargs='*', choices=['damage', 'duplicity', 'dust', 'taxpath', 'all', 'none'], default=['all'], help="Additional metrics to include in output file. Specify any combination of the first four, 'all', or 'none'. (default: all)")
+    parser_combine.add_argument(
+        "--include",
+        nargs="*",
+        choices=["damage", "duplicity", "dust", "taxpath", "gc", "all", "none"],
+        default=["all"],
+        help="Additional metrics to include in output file. Specify any combination of the options, 'all', or 'none'. Supports: damage, duplicity, dust, taxpath, gc (default: all)",
+    )
     parser_combine.set_defaults(func=combine)
 
     # krona
