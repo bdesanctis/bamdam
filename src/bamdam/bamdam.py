@@ -186,7 +186,16 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_k
     return total_short_lca_lines
 
 
-def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded,minsimilarity,annotate_pmd,totallcalines): 
+def write_shortened_bam(
+    original_bam_path,
+    short_lca_path,
+    short_bam_path,
+    stranded,
+    minsimilarity,
+    annotate_pmd,
+    totallcalines,
+    threads=1,
+):
     # runs through the existing bam and the new short lca file at once, and writes only lines to the new bam which are represented in the short lca file
     # does two passes, the first of which makes a shortened header as well and adds the command str to the end of the bam header
     # also annotates with pmd scores as it goes
@@ -206,9 +215,19 @@ def write_shortened_bam(original_bam_path,short_lca_path,short_bam_path,stranded
             lcaheaderlines += 1
     currentlcaline = lcaheaderlines
 
-    with pysam.AlignmentFile(original_bam_path, "rb", check_sq=False, require_index=False) as infile, \
-        pysam.AlignmentFile(short_bam_path, "wb", header=infile.header) as outfile, \
-        open(short_lca_path, 'r') as shortlcafile:
+    with (
+        pysam.AlignmentFile(
+            original_bam_path,
+            "rb",
+            check_sq=False,
+            require_index=False,
+            threads=threads,
+        ) as infile,
+        pysam.AlignmentFile(
+            short_bam_path, "wb", template=infile, threads=threads
+        ) as outfile,
+        open(short_lca_path, "r") as shortlcafile,
+    ):
 
         for _ in range(lcaheaderlines): 
             lcaline = next(shortlcafile)
@@ -1878,7 +1897,16 @@ def shrink(args):
     if(lca_file_type == "metadmg"):
         print("You are running bamdam shrink with a metaDMG-style lca file. This is ok, but be aware the output lca file will be in ngsLCA lca file format, as all the other functions in bamdam require this format.")
     shortlcalines = write_shortened_lca(args.in_lca, args.out_lca, args.upto, args.mincount, formatted_exclude_keywords, lca_file_type)
-    write_shortened_bam(args.in_bam, args.out_lca, args.out_bam, args.stranded, args.minsim, args.annotate_pmd, shortlcalines)
+    write_shortened_bam(
+        args.in_bam,
+        args.out_lca,
+        args.out_bam,
+        args.stranded,
+        args.minsim,
+        args.annotate_pmd,
+        shortlcalines,
+        args.threads,
+    )
 
 def compute(args):
     lca_file_type = find_lca_type(args.in_lca)
@@ -1934,6 +1962,12 @@ def main():
 
     # Shrink
     parser_shrink = subparsers.add_parser('shrink', help="Filter the BAM and LCA files.")
+    parser_shrink.add_argument(
+        "--threads",
+        type=int,
+        default=1,
+        help="Number of CPU threads to use for BAM compression/decompression (default: 1)",
+    )
     parser_shrink.add_argument("--in_lca", type=str, required=True, help="Path to the input LCA file (required)")
     parser_shrink.add_argument("--in_bam", type=str, required=True, help="Path to the input (read-sorted) BAM file (required)")
     parser_shrink.add_argument("--out_lca", type=str, required=True, help="Path to the short output LCA file (required)")
