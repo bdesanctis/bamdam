@@ -43,6 +43,7 @@ def test_shrink(tmp_path):
     args.exclude_keywords = []
     args.exclude_keyword_file = None
     args.annotate_pmd = False
+    args.threads = 1
 
     shrink(args)
 
