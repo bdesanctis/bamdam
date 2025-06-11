@@ -13,6 +13,7 @@ import argparse
 import os
 import hyperloglog
 import subprocess
+from functools import lru_cache
 try: # optional library only needed for plotting 
     import matplotlib.pyplot as plt
     matplotlib_imported = True
@@ -25,7 +26,7 @@ except ImportError:
     tqdm_imported = False
 
 level_order = ["superkingdom", "kingdom", "phylum", "class", "order", "family", "subfamily", "genus", "subgenus", "species", "subspecies"]
-
+COMPLEMENT = {"A": "T", "T": "A", "C": "G", "G": "C"}
 def get_sorting_order(file_path):
     # bamdam needs query / read sorted bams
     # this is the fastest way to check if HD is the first line of the header 
@@ -296,6 +297,18 @@ def write_shortened_bam(
 
     print("Wrote a filtered bam file. Done! \n") 
 
+@lru_cache(maxsize=1024)
+def parse_cigar_cached(cigar):
+    """Cache CIGAR parsing since many reads have identical CIGAR strings"""
+    return re.findall(r"\d+\D", cigar)
+
+
+@lru_cache(maxsize=1024)
+def parse_md_cached(md):
+    """Cache MD parsing since many reads have identical MD strings"""
+    return re.compile(r"\d+|\^[A-Za-z]+|[A-Za-z]").findall(md)
+
+
 def get_mismatches(seq, cigar, md):  
     # parses a read, cigar and md string to determine mismatches and positions. 
     # does not output info on insertions/deletions, but accounts for them.
@@ -304,10 +317,10 @@ def get_mismatches(seq, cigar, md):
     # goes in two passes: once w/ cigar and once w/ md 
 
     # the strategy is to reconstruct the alignment through the cigar string first, so read_seq and ref_seq are the same length
-    # but might have "-"s and "N"s floating around, and next to inform the substitutions from the md string 
+    # but might have "-"s and "N"s floating around, and next to inform the substitutions from the md string
 
-    cig = re.findall(r'\d+\D', cigar)
-    md_list = re.compile(r'\d+|\^[A-Za-z]+|[A-Za-z]').findall(md)
+    cig = parse_cigar_cached(cigar)
+    md_list = parse_md_cached(md)
 
     ref_seq = ''
     read_seq = ''
@@ -398,9 +411,17 @@ def get_mismatches(seq, cigar, md):
     # sGTTCTG-AG read_seq
     #  |||||| ||
     # sGTACTGNAG ref_seq
-    # mismatch_list: [A T 4]. 
+    # mismatch_list: [A T 4].
 
-    return [mismatch_list, ref_seq, read_seq] 
+    return [mismatch_list, ref_seq, read_seq]
+
+@lru_cache(maxsize=128)
+def is_reverse_strand(flagsum):
+    """Cache-enabled function to check if a read is on reverse strand"""
+    bin_flagsum = bin(flagsum)[::-1]
+    bit_position = 4  # 2^4 = 16 this flag means it's aligned in reverse
+    return len(bin_flagsum) > bit_position and bin_flagsum[bit_position] == "1"
+
 
 def mismatch_table(read,cigar,md,flagsum):
     # wrapper for get_mismatches that also reverse complements if needed, and mirrors around the middle of the read so you shouldn't have to keep the length
@@ -422,28 +443,25 @@ def mismatch_table(read,cigar,md,flagsum):
 
     # some processing: first, figure out if it's forward or backwards
     # second field of a bam is a flagsum and it parses like this (see eg bowtie2 manual)
-    bin_flagsum = bin(flagsum)[::-1]
-    bit_position = 4 #  2^4 = 16 this flag means it's aligned in reverse
-    backwards = len(bin_flagsum) > bit_position and bin_flagsum[bit_position] == '1' 
+    backwards = is_reverse_strand(flagsum)
 
-    if backwards: # flip all the positions and reverse complement all the nucleotides. the read in the bam is reverse-complemented if aligned to the reverse strand. 
-        complement = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C'}
+    if backwards:  # flip all the positions and reverse complement all the nucleotides. the read in the bam is reverse-complemented if aligned to the reverse strand.
         mmsc = []
         matchsc = []
 
         for entry in range(0,len(mms)): # mismatches
             new_entry = [
-                complement.get(mms[entry][0],"N"), 
-                complement.get(mms[entry][1],"N"), 
-                readlength - mms[entry][2] +1
+                COMPLEMENT.get(mms[entry][0], "N"),
+                COMPLEMENT.get(mms[entry][1], "N"),
+                readlength - mms[entry][2] + 1,
             ]
             mmsc.append(new_entry)
 
         for entry in range(0, len(matchs)): # matches
             new_entry = [
-                complement.get(matchs[entry][0],"N"), 
-                complement.get(matchs[entry][1],"N"), 
-                readlength - matchs[entry][2] + 1
+                COMPLEMENT.get(matchs[entry][0], "N"),
+                COMPLEMENT.get(matchs[entry][1], "N"),
+                readlength - matchs[entry][2] + 1,
             ]
             matchsc.append(new_entry)
     else:
@@ -837,7 +855,7 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
 
         allsubs = subs + matches
         for sub in allsubs:
-            key = "".join(str(sub))
+            key = tuple(sub)
             if key in currentsubdict:
                 currentsubdict[key] +=1
             else:
@@ -874,7 +892,7 @@ def format_subs(subs, nreads):
     for key, value in subs.items():
         # extract position and check if it is within the range -15 to 15 (more is unnecessary for damage)
         # easy to remove the condition if you want to write all of the subs though!
-        parts = key.strip("[]").replace("'", "").split(", ")
+        parts = [str(key[0]), str(key[1]), str(key[2])]
         pos = int(parts[2])
         if (-15 <= pos <= 15) and (parts[0] in {'A', 'C', 'T', 'G'}) and (parts[1] in {'A', 'C', 'T', 'G'}):
             formatted_key = "".join(parts)
@@ -897,9 +915,9 @@ def calculate_node_damage(subs, stranded):
     total_bases = 0
 
     for key, count in subs.items():
-        parts = key.strip("[]").replace("'", "").split(", ")
-        
-        from_base, to_base, pos = parts[0], parts[1], int(parts[2])
+        from_base, to_base, pos = str(key[0]), str(key[1]), int(key[2])
+
+        # from_base, to_base, pos = parts[0], parts[1], int(parts[2])
 
         # 5' end: check for C>T and all Cs at position +1
         if from_base == 'C' and pos == 1:
