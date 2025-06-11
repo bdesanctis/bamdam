@@ -3,6 +3,17 @@
 ## [0.2.0](https://github.com/bdesanctis/bamdam/compare/v0.1.2...v0.2.0) (2025-06-11)
 
 
+### Features
+
+* add threading option for shrink ([15e05c6](https://github.com/bdesanctis/bamdam/commit/15e05c6))
+* optimize compute by using lru cache and reduce string ops ([e0c3a08](https://github.com/bdesanctis/bamdam/commit/e0c3a08))
+
+
+### Bug Fixes
+
+* update tests ([353546e](https://github.com/bdesanctis/bamdam/commit/353546e))
+
+
 ### Miscellaneous Chores
 
 * release 0.2.0 ([1b20f30](https://github.com/bdesanctis/bamdam/commit/1b20f30f0d7c29bd4ba085851d96cbd9b7110897))
