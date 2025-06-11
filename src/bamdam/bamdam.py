@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 # bamdam by Bianca De Sanctis, bddesanctis@gmail.com  
-# WORKING VERSION; last updated may 5 2025
-# since last git commit: added GC content and more averaging to the combine function, fixed ^Ms at ends of tsv file lines, added an empty lca error catch
+# WORKING VERSION; last updated june 11 2025 cm
+
 
 import sys 
 import re
