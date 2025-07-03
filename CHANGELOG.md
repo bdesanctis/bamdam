@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.1](https://github.com/bdesanctis/bamdam/compare/v0.2.0...v0.2.1) (2025-07-03)
+
+
+### Bug Fixes
+
+* update imports and tests ([2d4ed29](https://github.com/bdesanctis/bamdam/commit/2d4ed299247211bbda4f90cc77e4173358a594c6))
+
+
+### Documentation
+
+* update changelog ([3706cd1](https://github.com/bdesanctis/bamdam/commit/3706cd170ea6a6d1a78cb7478e493a4f29de3c47))
+
 ## [0.2.0](https://github.com/bdesanctis/bamdam/compare/v0.1.2...v0.2.0) (2025-06-11)
 
 
