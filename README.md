@@ -48,7 +48,7 @@ The rest of the functions operate on the output of bamdam **shrink** and **compu
 
 Bamdam is not particularly optimized for speed, and doesn't support threading (much of the effort is spent on bam file I/O). On the other hand, it reads and writes bams line-by-line, so it shouldn't need too much RAM (usually <8GB). A 50GB shotgun sequencing bam file takes a few hours on my laptop, and this should scale roughly linearly, with higher runtimes expected for capture or highly informative data.
 
-We recommend running the tutorial first. Example data is provided.
+We recommend running the [tutorial](#tutorial) first. Example data is provided.
 
 ![bamdam workflow figure](docs/assets/workflowfigure.jpg "bamdam workflow")
 
@@ -59,22 +59,25 @@ We recommend running the tutorial first. Example data is provided.
 Input: Read-sorted bam file and associated lca file. Output: Smaller read-sorted bam file and associated lca file.
 
 ```
-usage: bamdam shrink [-h] --in_lca IN_LCA --in_bam IN_BAM --out_lca OUT_LCA --out_bam OUT_BAM --stranded STRANDED [--options]
+usage: bamdam shrink [-h] [--threads THREADS] --in_lca IN_LCA --in_bam IN_BAM --out_lca OUT_LCA --out_bam OUT_BAM --stranded STRANDED
+                  [--mincount MINCOUNT] [--upto UPTO] [--minsim MINSIM] [--exclude_tax EXCLUDE_TAX [EXCLUDE_TAX ...]]
+                  [--exclude_tax_file EXCLUDE_TAX_FILE] [--annotate_pmd]
 
-options:
+optional arguments:
   -h, --help            show this help message and exit
+  --threads THREADS     Number of CPU threads to use for BAM compression/decompression (default: 1)
   --in_lca IN_LCA       Path to the input LCA file (required)
   --in_bam IN_BAM       Path to the input (read-sorted) BAM file (required)
   --out_lca OUT_LCA     Path to the short output LCA file (required)
   --out_bam OUT_BAM     Path to the short output BAM file (required)
   --stranded STRANDED   Either ss for single stranded or ds for double stranded (required)
   --mincount MINCOUNT   Minimum read count to keep a node (default: 5)
-  --upto UPTO           Keep nodes up to and including this tax threshold; use root to disable (default: family)
+  --upto UPTO           Keep nodes up to and including this tax threshold (default: family)
   --minsim MINSIM       Minimum similarity to reference to keep an alignment (default: 0.9)
-  --exclude_keywords EXCLUDE_KEYWORDS [EXCLUDE_KEYWORDS ...]
-                        Keyword(s) to exclude when filtering (default: none)
-  --exclude_keyword_file EXCLUDE_KEYWORD_FILE
-                        File of keywords to exclude when filtering, one per line (default: none)
+  --exclude_tax EXCLUDE_TAX [EXCLUDE_TAX ...]
+                        Numeric tax ID(s) to exclude when filtering (default: none)
+  --exclude_tax_file EXCLUDE_TAX_FILE
+                        File of numeric tax ID(s) to exclude when filtering, one per line (default: none)
   --annotate_pmd        Annotate output bam file with PMD tags (default: not set)
 ```
 
@@ -93,17 +96,17 @@ Input bam files must be sorted by read order (samtools sort -n). Merging read-so
 Input: Read-sorted bam and associated lca file (both from bamdam shrink output). Output: Tsv file and subs file.
 
 ```
-usage: bamdam compute [-h] --in_bam IN_BAM --in_lca IN_LCA --out_tsv OUT_TSV --out_subs OUT_SUBS --stranded STRANDED [--options]
+usage: bamdam compute [-h] --in_bam IN_BAM --in_lca IN_LCA --out_tsv OUT_TSV --out_subs OUT_SUBS --stranded STRANDED [--k K] [--upto UPTO]
 
-options:
-  -h, --help            show this help message and exit
-  --in_bam IN_BAM       Path to the BAM file (required)
-  --in_lca IN_LCA       Path to the LCA file (required)
-  --out_tsv OUT_TSV Path to the output tsv file (required)
-  --out_subs OUT_SUBS   Path to the output subs file (required)
-  --stranded STRANDED   Either ss for single stranded or ds for double stranded (required)
-  --k K                 Value of k for per-node counts of unique k-mers and duplicity (default: 29)
-  --upto UPTO           Keep nodes up to and including this tax threshold (default: family)
+optional arguments:
+  -h, --help           show this help message and exit
+  --in_bam IN_BAM      Path to the BAM file (required)
+  --in_lca IN_LCA      Path to the LCA file (required)
+  --out_tsv OUT_TSV    Path to the output tsv file (required)
+  --out_subs OUT_SUBS  Path to the output subs file (required)
+  --stranded STRANDED  Either ss for single stranded or ds for double stranded (required)
+  --k K                Value of k for per-node counts of unique k-mers and duplicity (default: 29)
+  --upto UPTO          Keep nodes up to and including this tax threshold; use root to disable (default: family)
 ```
 
 Full list of the output tsv columns:
@@ -135,37 +138,40 @@ Bamdam compute aggregates statistics up the taxonomy and outputs rows for all ta
 Takes in multiple tsv files from the output of bamdam compute, and combines them into one matrix. Output will always contain a total reads column, and by default will also include per-sample damage (on the 5' +1 position), the read-weighted damage mean over all samples per taxa, and the duplicity and dust per-sample. By default, only includes taxa with more than 50 total reads across samples. 
 
 ```
-usage: bamdam combine --in_tsv_list TSVLIST --out_tsv OUTTSV
+usage: bamdam combine [-h] (--in_tsv IN_TSV [IN_TSV ...] | --in_tsv_list IN_TSV_LIST) [--out_tsv OUT_TSV] [--minreads MINREADS]
+                   [--include [{damage,duplicity,dust,taxpath,gc,all,none} ...]]
 
 optional arguments:
   -h, --help            show this help message and exit
   --in_tsv IN_TSV [IN_TSV ...]
-                        List of input tsv files.
+                        List of input tsv file(s)
   --in_tsv_list IN_TSV_LIST
-                        Path to a text file containing paths to input tsv files, one per line.
+                        Path to a text file containing paths to input tsv files, one per line
   --out_tsv OUT_TSV     Path to output tsv file name (default: combined.tsv)
-  --minreads MINREADS   Minimum reads across samples to include taxa (default: 50).
-  --include [{damage,duplicity,dust,taxpath,all,none} ...]
-                        Additional metrics to include in output file. Specify any combination of the first
-                        four, 'all', or 'none'. (default: all)
+  --minreads MINREADS   Minimum reads across samples to include taxa (default: 50)
+  --include [{damage,duplicity,dust,taxpath,gc,all,none} ...]
+                        Additional metrics to include in output file. Specify any combination of the options, 'all', or 'none'.
+                        Supports: damage, duplicity, dust, taxpath, gc (default: all)
 ```
 
 ### <a name="extract"></a>bamdam extract
 
-Extracts reads assigned to a specific taxonomic node or underneath from a bam file. Output is another bam file. Accepts tax IDs or full tax strings. Subsetting the header is recommended to minimize output file size but it is slower, so not set by default. If subsetting the header, you can also choose to only include alignments to the most-hit reference genome to obtain a single-reference-genome bam. 
+Extracts reads assigned to a specific taxonomic node or underneath from a bam file. Output is another bam file, also with a subsetted header to only include those references which appear in output bam alignments. Accepts numeric tax IDs. You can also choose to only include alignments to the most-hit reference genome to obtain a single-reference-genome bam. 
 
 ```
-usage: bamdam extract --in_bam IN_BAM --in_lca IN_LCA --out_bam OUT_BAM --keyword KEYWORD [--subset_header] [--only_top_ref]
+usage: bamdam extract [-h] --in_bam IN_BAM --in_lca IN_LCA --out_bam OUT_BAM [--tax TAX [TAX ...]] [--tax_file TAX_FILE] [--only_top_ref]
 
-options:
-  -h, --help         show this help message and exit
-  --in_bam IN_BAM    Path to the BAM file (required)
-  --in_lca IN_LCA    Path to the LCA file (required)
-  --out_bam OUT_BAM  Path to the filtered BAM file (required)
-  --keyword KEYWORD  Keyword or phrase to filter for, e.g. a taxonomic node ID (required)
-  --subset_header    Subset the header to only relevant references (default: not set)
-  --only_top_ref     Only keep alignments to the most-hit reference (default: not set)
+optional arguments:
+  -h, --help           show this help message and exit
+  --in_bam IN_BAM      Path to the BAM file (required)
+  --in_lca IN_LCA      Path to the LCA file (required)
+  --out_bam OUT_BAM    Path to the filtered BAM file (required)
+  --tax TAX [TAX ...]  Numeric tax ID(s) to extract (default: none)
+  --tax_file TAX_FILE  File of numeric tax ID(s) to extract, one per line (default: none)
+  --only_top_ref       Only keep alignments to the most-hit reference (default: not set)
 ```
+
+Note that bamdam extract output may still contain multi-mappers i.e. multiple alignments per read, and if you can't trust your mapping quality scores (which might be the case if you mapped against the reference database in separate chunks), you might consider quickly re-mapping these reads to their single reference genome before continuing with some downstream steps. See the tutorial for an example of this.
 
 ### <a name="plotdamage"></a>bamdam plotdamage
 
@@ -261,15 +267,20 @@ bamdam plotbaminfo --in_bam CGG3.Myrtoideae.bam --outplot CGG3_Myrtoideae_baminf
 ```
 We might want to investigate reference-specific properties like evenness of coverage. Let's extract only those Myrtoidae reads which hit the most common Myrtoidae reference. This might take a minute.
 ```
-bamdam extract --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_bam CGG3.MyrtoideaeTopRef.bam --keyword 1699513 --subset_header --only_top_ref
+bamdam extract --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_bam CGG3.MyrtoideaeTopRef.bam --tax 1699513 --only_top_ref
 ```
-The command-line output tells you the most common reference genome, NW_026607485.1. As an example of a potential downstream step, let's download this reference, coordinate-sort the bam, and make a samtools command-line reference-specific coverage plot. This requires samtools.
+The command-line output also tells you the most common reference genome, NW_026607485.1. 
+
+Skip this part if you want, but as a brief aside, let's give an example of a potential downstream step getting a simple coverage plot on a reference genome. We'll need samtools and bowtie2. Remember the extracted bam still has multimappers, and that you can't filter by mapping quality because using bowtie2 with multimapping means you don't get any map quality scores. Soet's download the top-hit reference, remap to it with bowtie2 (which defaults to one alignment per read with a correct mapping quality), filter, coordinate sort, and make a samtools command-line reference-specific coverage plot. This took a few minutes on my laptop.
 ```
 wget "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nucleotide&id=NW_026607485.1&rettype=fasta&retmode=text" -O NW_026607485.1.fasta
-samtools sort CGG3.MyrtoideaeTopRef.bam > CGG3.MyrtoideaeTopRefSorted.bam
-samtools coverage CGG3.MyrtoideaeTopRefSorted.bam -m
+bowtie2-build NW_026607485.1.fasta NW_026607485.1.fasta
+samtools fastq CGG3.MyrtoideaeTopRef.bam > CGG3.MyrtoideaeTopRef.fq
+bowtie2 -x NW_026607485.1.fasta -U CGG3.MyrtoideaeTopRef.fq | samtools view -bS - | samtools sort > CGG3.Myrtoideae.filtered.bam
+samtools coverage CGG3.Myrtoideae.filtered.bam -m
 ```
-The next part of this tutorial is about combining and visualizing multiple samples together, so we will need to download a few more tsv files. Let's also switch datasets to showcase a broader range of data - though you can also run all the following commands on the tsv we just created. These new files are from an unpublished ancient microbial study with single-stranded library prep, and were generated from bamdam shrink + compute after using ngsLCA with the GTDB taxonomy.
+
+Back to bamdam. The next part of this tutorial is about combining and visualizing multiple samples together, so we will need to download a few more tsv files. Let's also switch datasets to showcase a broader range of data - though you can also run all the following commands on the tsv we just created. These new files are from an unpublished ancient microbial study with single-stranded library prep, and were generated from bamdam shrink + compute after using ngsLCA with the GTDB taxonomy.
 ```
 wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/microbes1.tsv
 wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/microbes2.tsv
