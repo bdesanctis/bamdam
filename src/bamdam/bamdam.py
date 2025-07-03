@@ -20,7 +20,17 @@ except ImportError:
     tqdm_imported = False
 
 # local
-import utils, alignment_utils, shrink, compute, combine, extract, plotdamage, plotbaminfo, krona
+from bamdam import (
+    utils,
+    alignment_utils,
+    shrink,
+    compute,
+    combine,
+    extract,
+    plotdamage,
+    plotbaminfo,
+    krona,
+)
 
 def main():
 

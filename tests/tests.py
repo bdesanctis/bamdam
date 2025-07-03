@@ -9,15 +9,7 @@ from pathlib import Path
 
 
 # Import the command functions directly from bamdam
-from bamdam.bamdam import (
-    shrink,
-    compute,
-    extract,
-    plotdamage,
-    plotbaminfo,
-    combine,
-    krona,
-)
+from bamdam import shrink
 
 
 def test_shrink(tmp_path):
@@ -45,7 +37,7 @@ def test_shrink(tmp_path):
     args.annotate_pmd = False
     args.threads = 1
 
-    shrink(args)
+    shrink.run_shrink(args)
 
     # Check if output files exist
     assert out_lca.exists()

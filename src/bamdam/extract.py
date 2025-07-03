@@ -10,8 +10,8 @@ import argparse
 import os
 import subprocess
 
-import utils
-import alignment_utils
+from bamdam import utils
+from bamdam import alignment_utils
 
 def run_extract(args):
     formatted_tax = parse_tax(args)

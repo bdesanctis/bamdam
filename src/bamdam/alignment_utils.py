@@ -16,7 +16,7 @@ except ImportError:
     tqdm_imported = False
 
 # local
-import utils
+from bamdam import utils
 
 def get_mismatches(seq, cigar, md):  
     # parses a read, cigar and md string to determine mismatches and positions. 

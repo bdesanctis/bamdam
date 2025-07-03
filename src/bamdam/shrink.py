@@ -17,8 +17,8 @@ except ImportError:
     tqdm_imported = False
 
 # local
-import utils
-import alignment_utils
+from bamdam import utils
+from bamdam import alignment_utils
 
 def run_shrink(args):
     formatted_exclude_tax = parse_exclude_tax(args)
