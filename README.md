@@ -271,7 +271,7 @@ bamdam extract --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_bam CGG3.My
 ```
 The command-line output also tells you the most common reference genome, NW_026607485.1. 
 
-Skip this part if you want, but as a brief aside, let's give an example of a potential downstream step getting a simple coverage plot on a reference genome. We'll need samtools and bowtie2. Remember the extracted bam still has multimappers, and that you can't filter by mapping quality because using bowtie2 with multimapping means you don't get any map quality scores. Soet's download the top-hit reference, remap to it with bowtie2 (which defaults to one alignment per read with a correct mapping quality), filter, coordinate sort, and make a samtools command-line reference-specific coverage plot. This took a few minutes on my laptop.
+Skip this part if you want, but as a brief aside, let's give an example of a potential downstream step getting a simple coverage plot on a reference genome. We'll need samtools and bowtie2. Remember the extracted bam still has multimappers, and that you can't filter by mapping quality because using bowtie2 with multimapping means you don't get any map quality scores. So let's download the top-hit reference, remap to it with bowtie2 (which defaults to one alignment per read with a correct mapping quality), filter, coordinate sort, and make a samtools command-line reference-specific coverage plot. This took a few minutes on my laptop.
 ```
 wget "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nucleotide&id=NW_026607485.1&rettype=fasta&retmode=text" -O NW_026607485.1.fasta
 bowtie2-build NW_026607485.1.fasta NW_026607485.1.fasta
