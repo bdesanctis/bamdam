@@ -116,7 +116,7 @@ def main():
         default=["all"],
         help="Additional metrics to include in output file. Specify any combination of the options, 'all', or 'none'. Supports: damage, duplicity, dust, taxpath, gc (default: all)",
     )
-    parser_combine.set_defaults(func=combine)
+    parser_combine.set_defaults(func=combine.run_combine)
 
     # krona
     parser_krona = subparsers.add_parser(
@@ -127,7 +127,7 @@ def main():
     parser_krona.add_argument("--out_xml", type=str, default="out.xml", help="Path to output xml file name (default: out.xml)")
     parser_krona.add_argument("--minreads", type=int, default=100, help="Minimum reads across samples to include taxa (default: 100)")
     parser_krona.add_argument("--maxdamage",type=float, default=None, help="Force a maximum value for the 5' C-to-T damage color scale. If not provided, the maximum value is determined from the data, with a minimum threshold of 0.3. (not recommended by default)")
-    parser_krona.set_defaults(func=krona)
+    parser_krona.set_defaults(func=krona.run_krona)
 
     if len(sys.argv) == 1:
         parser.print_help()
