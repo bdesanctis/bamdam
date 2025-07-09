@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.2](https://github.com/bdesanctis/bamdam/compare/v0.2.1...v0.2.2) (2025-07-09)
+
+
+### Bug Fixes
+
+* modularization bug fix ([ea8e551](https://github.com/bdesanctis/bamdam/commit/ea8e5516bcbb9326c23381001c3e68cd07f5a9e9))
+
 ## [0.2.1](https://github.com/bdesanctis/bamdam/compare/v0.2.0...v0.2.1) (2025-07-03)
 
 
