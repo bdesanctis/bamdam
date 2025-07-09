@@ -12,6 +12,7 @@ import hyperloglog
 import subprocess
 from functools import lru_cache
 
+# makes krona plot for import into ktImportXML
 
 def run_krona(args):
     make_krona_xml(args.in_tsv, args.in_tsv_list, args.out_xml, args.minreads, args.maxdamage)
