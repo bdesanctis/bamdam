@@ -25,8 +25,8 @@ except:
     matplotlib_imported = False
 
 # local
-import utils
-import alignment_utils
+from bamdam import utils
+from bamdam import alignment_utils
 
 def run_compute(args):
     lca_file_type = utils.find_lca_type(args.in_lca)
