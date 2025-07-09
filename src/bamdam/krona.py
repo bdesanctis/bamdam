@@ -13,7 +13,7 @@ import subprocess
 from functools import lru_cache
 
 
-def krona(args):
+def run_krona(args):
     make_krona_xml(args.in_tsv, args.in_tsv_list, args.out_xml, args.minreads, args.maxdamage)
 
 
