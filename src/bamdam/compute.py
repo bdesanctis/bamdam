@@ -451,7 +451,8 @@ def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_b
         # also calculate the gc content for the average ref (so, unbiased by damage), weighted equally by read, not alignment
         dp1, dm1, avgrefgc  = calculate_node_damage(tn['subs'], stranded)
 
-        # write 
+        # 
+        # write , number of columns depends on if you wanted pmds or not
         if pmds_in_bam:
             row = [int(node), taxname, tn['total_reads'], round(duplicity, 3), round(tn['avgdust'], 2), 
                 round(dp1, 4), round(dm1, 4), 
