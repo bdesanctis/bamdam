@@ -31,11 +31,10 @@ def test_shrink(tmp_path):
     args.stranded = "ds"
     args.upto = "family"
     args.mincount = 1
-    args.minsim = 0.05
-    args.exclude_keywords = []
-    args.exclude_keyword_file = None
+    args.minsim = 0
+    args.exclude_tax = []
+    args.exclude_tax_file = None
     args.annotate_pmd = False
-    args.threads = 1
     args.show_progress = False
 
     shrink.run_shrink(args)
