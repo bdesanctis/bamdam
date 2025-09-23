@@ -10,13 +10,8 @@ import argparse
 import os
 import hyperloglog
 import subprocess
+import random
 from functools import lru_cache
-
-try: # optional library for progress bars 
-    from tqdm import tqdm
-    tqdm_imported = True
-except ImportError:
-    tqdm_imported = False
 
 try: # optional library only needed for plotting 
     import matplotlib.pyplot as plt
@@ -33,8 +28,8 @@ def run_compute(args):
     if(lca_file_type == "metadmg"):
         print("Error: It looks like you're trying to run bamdam compute with a metaDMG-style lca file. Please use an ngsLCA-style lca file. Bamdam shrink can automatically convert it for you.")
         sys.exit()
-    nodedata, pmds_in_bam = gather_subs_and_kmers(args.in_bam, args.in_lca, kn=args.k, upto=args.upto, stranded=args.stranded)
-    parse_and_write_node_data(nodedata, args.out_tsv, args.out_subs, args.stranded, pmds_in_bam) 
+    nodedata, pmds_in_bam = gather_subs_and_kmers(args.in_bam, args.in_lca, kn=args.k, upto=args.upto, mode=args.mode, stranded=args.stranded, show_progress=args.show_progress)
+    parse_and_write_node_data(nodedata, args.out_tsv, args.out_subs, args.stranded, pmds_in_bam, args.mode) 
     if args.plotdupdust:
         plotdupdust(args.out_tsv, args.plotdupdust) 
 
@@ -108,16 +103,16 @@ def get_hll_info(seq,k):
         print(f"Warning: One of your reads is shorter than k.")
     return rep_kmers, total_kmers
 
-def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
+def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto, mode, stranded, show_progress = False):
     print("\nGathering substitution and kmer metrics per node...")
-    # this function is organized in an unintuitive way. it uses a bunch of nested loops to pop between the bam and lca files line by line. 
+    # this function is organized in a potentially unintuitive way. it uses a bunch of nested loops to pop between the bam and lca files line by line. 
     # it matches up bam read names and lca read names and aggregates some things per alignment, some per read, and some per node, the last of which are added into a large structure node_data.
     # altogether this uses very little ram
 
     lcaheaderlines = 0
     with open(lcafile_path, 'r') as lcafile:
         for lcaline in lcafile:
-            if "root" in lcaline and "#" not in lcaline:
+            if "no rank" in lcaline and "#" not in lcaline:
                 break
             lcaheaderlines += 1
 
@@ -138,26 +133,73 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
     are_pmds_in_the_bam = True # just assume true, then set to false quickly below if you notice otherwise 
     lcalinesskipped = 0
     readswithNs = 0
-
     currentlcalinenum = 0
-    if tqdm_imported:
-        totallcalines = utils.line_count(lcafile_path)
-        # should be super fast compared to anything else; probably worth it to initiate a progress bar.
-        progress_bar = tqdm(total=totallcalines-lcaheaderlines, unit='lines', disable=not tqdm_imported) if tqdm_imported else None
-        if progress_bar:
-            update_interval = 100 # this is arbitrary ofc. could also be e.g. (totallcalines // 1000) 
+    best_alignments = []
+    best_alignment_score = -1000
+    refgc = 0
+
+    # do we want a progress bar?
+    progress_bar = None
+    if show_progress:
+        try: # optional library for progress bars 
+            from tqdm import tqdm
+            tqdm_imported = True
+        except ImportError:
+            tqdm_imported = False
+        if not tqdm_imported: # you can't have one after all
+            print("The library tqdm is not available, so progress bars will not be shown. This will not impact performance.")
+        else:
+            totallcalines = utils.line_count(lcafile_path)
+            # should be super fast compared to anything else; worth it to initiate a progress bar if you want it. 
+            progress_bar = tqdm(total=totallcalines-lcaheaderlines, unit='lines', disable=not tqdm_imported) if tqdm_imported else None
+            if progress_bar:
+                update_interval = 100 # this is arbitrary of course. could also be e.g. (totallcalines // 1000) 
 
     for _ in range(lcaheaderlines +1):
         currentlcaline = next(lcafile) 
 
-    for read in bamfile:
-
-        # get the basic info for this read
-        readname = read.query_name
-
+    for alignment in bamfile:
+        readname = alignment.query_name
         # find out if it's a new read. if so, you just finished the last read, so do a bunch of stuff for it. 
         # the first read will skip this if statement because of the second condition
         if readname != oldreadname and oldreadname != "":
+
+            if mode == 1:
+                # compute on the best alignment here, now that we're done with that read name
+                if len(best_alignments) > 1:
+                    # pick one
+                    best_alignment = random.choice(best_alignments)
+                elif len(best_alignments) == 1:
+                    best_alignment = best_alignments[0]
+                else:
+                    print("Error: unexpected behavior. Can't find a best alignment for this read.")
+                    exit(-1)
+                seq = best_alignment.query_sequence
+                readlength = len(seq)
+                cigar = best_alignment.cigarstring
+                md = best_alignment.get_tag('MD')
+                nms = best_alignment.get_tag('NM')
+                if are_pmds_in_the_bam: 
+                    try:
+                        pmd = float(best_alignment.get_tag('DS'))
+                    except KeyError:
+                        pmd = 0
+                    if(pmd>2):
+                        pmdsover2 += 1 
+                    if(pmd>4):
+                        pmdsover4 += 1
+                flagsum = best_alignment.flag
+                # go and get the mismatch table for this best alignment
+                subs, matches, reference_seq = alignment_utils.mismatch_table(seq,cigar,md,flagsum) 
+                refgc = (reference_seq.count('C') + reference_seq.count('G')) / len(reference_seq)
+                allsubs = subs + matches
+                for sub in allsubs:
+                    key = tuple(sub)
+                    if key in currentsubdict:
+                        currentsubdict[key] +=1
+                    else:
+                        currentsubdict[key] = 1
+            # other modes will already have that info stored, as it was being tracked over all alignments as we ran through them
 
             # do k-mer things for this read
             dust = calculate_dust(seq)
@@ -200,12 +242,12 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
                 if node not in node_data:
                     if are_pmds_in_the_bam:
                         node_data[node] = {'total_reads': 0,'pmdsover2': 0, 'pmdsover4': 0, 'meanlength': 0, 'total_alignments': 0, 
-                            'ani': 0, 'avgdust' : 0, 'avgreadgc': 0, 'tax_path' : "", 'subs': {}, 'damagerelevantreadsp1': 0, 'damagerelevantreadsm1': 0,
-                            'dp1' : 0, 'dm1' : 0,  'hll': hyperloglog.HyperLogLog(0.01), 'totalkmers' : 0}
+                            'ani': 0, 'avgdust' : 0, 'avgreadgc': 0, 'avgrefgc': 0,  'tax_path' : "", 'subs': {}, 'damagerelevantreadsp1': 0, 'damagerelevantreadsm1': 0,
+                            'dp1' : 0, 'dm1' : 0,  'hll': hyperloglog.HyperLogLog(0.01), 'totalkmers' : 0, 'unaggregatedreads' : 0}
                     else:
                         node_data[node] = {'total_reads': 0,'meanlength': 0, 'total_alignments': 0, 
-                            'ani': 0, 'avgdust' : 0, 'avgreadgc': 0, 'tax_path' : "", 'subs': {}, 'damagerelevantreadsp1': 0, 'damagerelevantreadsm1': 0,
-                            'dp1' : 0, 'dm1' : 0, 'hll': hyperloglog.HyperLogLog(0.01), 'totalkmers' : 0}
+                            'ani': 0, 'avgdust' : 0, 'avgreadgc': 0, 'avgrefgc': 0, 'tax_path' : "", 'subs': {}, 'damagerelevantreadsp1': 0, 'damagerelevantreadsm1': 0,
+                            'dp1' : 0, 'dm1' : 0, 'hll': hyperloglog.HyperLogLog(0.01), 'totalkmers' : 0, 'unaggregatedreads' : 0}
                         
                 # now populate/update it        
                 node_data[node]['meanlength'] = ((node_data[node]['meanlength'] * node_data[node]['total_reads']) + readlength) / (node_data[node]['total_reads'] + 1)
@@ -215,31 +257,71 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
                 else:
                     readswithNs +=1 
 
-                ani_for_this_read = (readlength - nms/num_alignments)/readlength 
-                node_data[node]['ani'] = (ani_for_this_read + node_data[node]['ani'] * node_data[node]['total_reads']) / (node_data[node]['total_reads'] + 1)
+                # in theory, ani = (1 - num_mismatches) / readlength 
+                # but you will have multiple values because each read has multiple alignments, so they need to be dealt with accordingly
+                if mode == 1:
+                    # nms will be made from 1 (the best) alignment. easy to transform to ani
+                    ani_for_this_read = (readlength - nms) / readlength
+                    node_data[node]['ani'] = (ani_for_this_read + node_data[node]['ani'] * node_data[node]['total_reads']) / (node_data[node]['total_reads'] + 1)
+                if mode == 2:
+                    # nms will be sum of num_alignments alignments. average over alignments first, then get ani
+                    ani_for_this_read = (readlength - (nms/num_alignments))/readlength 
+                    node_data[node]['ani'] = (ani_for_this_read + node_data[node]['ani'] * node_data[node]['total_reads']) / (node_data[node]['total_reads'] + 1)
+                if mode == 3:
+                    # nms will be sum of num_alignments alignments
+                    # logic: say i have num_alignments = 3 and i kept all the nms separate, so there are three of them, and therefore three values for ani
+                    # then i want to get the summed ani, so sum_ani =( (readlength -nms[1] /readlength + (readlength -nms[2]) /readlength  + (readlength -nms[3])/readlength )
+                    # or (num_alignments - nms/(readlength*num_alignments) ), or
+                    ani_for_this_read =  (readlength*num_alignments - nms) / readlength
+                    node_data[node]['ani'] = (ani_for_this_read + node_data[node]['ani'] * node_data[node]['total_alignments']) / (node_data[node]['total_alignments'] + num_alignments)
+                
                 gc_content_for_this_read = (seq.count('C') + seq.count('G')) / readlength
                 node_data[node]['avgreadgc'] = ((node_data[node]['avgreadgc'] * node_data[node]['total_reads']) + gc_content_for_this_read) / (node_data[node]['total_reads'] + 1)
+                if mode == 1:
+                    # there will be 1 contributor to refgc
+                    node_data[node]['avgrefgc'] = ((node_data[node]['avgrefgc'] * node_data[node]['total_reads']) + refgc) / (node_data[node]['total_reads'] + 1)
+                if mode == 2:
+                    # there will be num_alignments contributors to refgc, but we want to average it 
+                    node_data[node]['avgrefgc'] = ((node_data[node]['avgrefgc'] * node_data[node]['total_reads']) + (refgc/num_alignments) ) / (node_data[node]['total_reads'] + 1)
+                if mode == 3:
+                    # there will be num_alignments contributors to refgc
+                    node_data[node]['avgrefgc'] = ((node_data[node]['avgrefgc'] * node_data[node]['total_alignments']) + refgc) / (node_data[node]['total_alignments'] + num_alignments)
+
+                # only now we can increment total alignments
                 node_data[node]['total_alignments'] += num_alignments
 
+                # you can do pmds with the modes too
+                # if mode == 1, then you can set num_alignments = 1
                 if are_pmds_in_the_bam:
-                    node_data[node]['pmdsover2'] += pmdsover2 / num_alignments
-                    node_data[node]['pmdsover4'] += pmdsover4 / num_alignments
+                    if mode == 2:
+                        node_data[node]['pmdsover2'] += pmdsover2 / num_alignments
+                        node_data[node]['pmdsover4'] += pmdsover4 / num_alignments
+                    if mode == 1 or mode == 3:
+                        node_data[node]['pmdsover2'] += pmdsover2 
+                        node_data[node]['pmdsover4'] += pmdsover4 
+                        # we fix the denominator later in the mode = 3 case (in the next function)
 
                 # update hyperloglogs
                 for kmer in rep_kmers:
                     node_data[node]['hll'].add(kmer)
                 node_data[node]['totalkmers'] += total_kmers
 
-                # updates substitution tables similarly
-                other_sub_count = 0
+                other_sub_count = 0 # useless for now
                 if currentsubdict:
                     for sub, count in currentsubdict.items():
                         if not ((sub[0] == 'C' and sub[1] == 'T') or (sub[0] == 'G' and sub[1] == 'A')):
                             other_sub_count += count # don't include c>t or g>a in any case, regardless of library 
                         if sub in node_data[node]['subs']: 
-                            node_data[node]['subs'][sub] += count / num_alignments
+                            if mode == 1 or mode == 3:
+                                node_data[node]['subs'][sub] += count
+                            if mode == 2:
+                                node_data[node]['subs'][sub] += count / num_alignments
                         else:
-                            node_data[node]['subs'][sub] = count / num_alignments # so, this can be up to 1 per node. 
+                            if mode == 1 or mode == 3:
+                                node_data[node]['subs'][sub] = count
+                            if mode == 2:
+                                node_data[node]['subs'][sub] = count / num_alignments # so, this can be up to 1 per node. 
+
                 # add the tax path if it's not already there
                 if node_data[node]['tax_path'] == "":
                     try:
@@ -253,6 +335,8 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
                 
                 # only at the end should you update total reads 
                 node_data[node]['total_reads'] += 1
+            # outside of the loop, we should update the unaggregated read count only for the actual node we hit, not all the ones on top
+            node_data[nodestodumpinto[0]]['unaggregatedreads'] += 1
 
             # move on to the next lca entry. re initialize a bunch of things here 
             oldreadname = readname
@@ -265,48 +349,71 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto,stranded):
                 progress_bar.update(update_interval)  # Update the progress bar
             currentsubdict = {}
             num_alignments = 0
+            best_alignments = []
+            best_alignment_score = -1000
             nms = 0
+            refgc = 0
             if are_pmds_in_the_bam:
                 pmdsover2 = 0
                 pmdsover4 = 0
 
         # now for the current alignment.
         # the following might change for different alignments of the same read: 
-        seq = read.query_sequence
-        readlength = len(seq)
-        cigar = read.cigarstring
-        md = read.get_tag('MD')
-        nms += read.get_tag('NM')
-        if are_pmds_in_the_bam: 
-            try:
-                pmd = float(read.get_tag('DS'))
-            except KeyError:
-                pmd = 0
-            if(pmd>2):
-                pmdsover2 += 1 
-            if(pmd>4):
-                pmdsover4 += 1
-        flagsum = read.flag
+        alignment_score = alignment.get_tag("AS")
         num_alignments += 1 
 
-        # go and get the mismatch table for this read if the name/md/cigar/flagsum is different to before (this is expensive, so there is a catch to avoid it when possible)
-        if (readname != oldreadname) or (cigar != oldcigar) or (md != oldmd) or (flagsum != oldflagsum):
-            subs, matches, refseq = alignment_utils.mismatch_table(seq,cigar,md,flagsum) 
-            oldcigar = cigar; oldmd = md; oldflagsum = flagsum
-
-        allsubs = subs + matches
-        for sub in allsubs:
-            key = tuple(sub)
-            if key in currentsubdict:
-                currentsubdict[key] +=1
+        if mode == 1:
+            # much less computing needed, hold it all off until the end when we know the best alignment
+            if best_alignments == []:
+                # nothing tracked yet, initialize
+                best_alignments = [alignment]
+                best_alignment_score = alignment_score
             else:
-                currentsubdict[key] = 1
+                if alignment_score > best_alignment_score:
+                    best_alignments = [alignment]
+                    best_alignment_score = alignment_score
+                elif alignment_score == best_alignment_score:
+                    best_alignments.append(alignment)
+                else:
+                    continue  # onto the next alignment! until you are done with the read
+                # then pick a random best alignment at the end of the read and compute on it
+
+        if mode == 2 or mode == 3:
+            # we are computing on every alignment
+            seq = alignment.query_sequence
+            readlength = len(seq)
+            cigar = alignment.cigarstring
+            md = alignment.get_tag('MD')
+            nms += alignment.get_tag('NM')
+            if are_pmds_in_the_bam: 
+                try:
+                    pmd = float(alignment.get_tag('DS'))
+                except KeyError:
+                    pmd = 0
+                if(pmd>2):
+                    pmdsover2 += 1 
+                if(pmd>4):
+                    pmdsover4 += 1
+            flagsum = alignment.flag
+            # go and get the mismatch table for this read if the name/md/cigar/flagsum is different to before (this is expensive, so there is a catch to avoid it when possible)
+            if (readname != oldreadname) or (cigar != oldcigar) or (md != oldmd) or (flagsum != oldflagsum):
+                subs, matches, refseq = alignment_utils.mismatch_table(seq,cigar,md,flagsum) 
+                oldcigar = cigar; oldmd = md; oldflagsum = flagsum
+            # now refgc
+            refgc += (refseq.count('C') + refseq.count('G')) / len(refseq)  # sum of refgc percent over all alignments 
+            allsubs = subs + matches
+            for sub in allsubs:
+                key = tuple(sub)
+                if key in currentsubdict:
+                    currentsubdict[key] +=1
+                else:
+                    currentsubdict[key] = 1
 
         # quick catch for the starting read; check if the first read (and then presumably the whole bam) has a pmd score 
         if oldreadname == "":
             oldreadname = readname
             try:
-                pmd = float(read.get_tag('DS'))
+                pmd = float(alignment.get_tag('DS'))
             except KeyError:
                 are_pmds_in_the_bam = False
 
@@ -387,24 +494,22 @@ def calculate_node_damage(subs, stranded):
 
         total_bases += count  
 
-    avgrefgc = total_gc / total_bases if total_bases > 0 else 0
-
     dp1 = ctp1 / c_p1 if c_p1 > 0 else 0
     dm1 = (ctm1 / c_m1 if c_m1 > 0 else 0) if stranded == "ss" else (gam1 / g_m1 if g_m1 > 0 else 0)
 
-    return dp1, dm1, avgrefgc
+    return dp1, dm1
 
-def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_bam):
+def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_bam, mode):
     # parses a dictionary where keys are node tax ids, and entries are total_reads, meanlength, total_alignments, etc 
 
     statsfile = open(tsv_path, 'w', newline='')
     subsfile = open(subs_path, 'w', newline='')
     if pmds_in_bam:
         header = ['TaxNodeID', 'TaxName', 'TotalReads','Duplicity', 'MeanDust','Damage+1', 'Damage-1','MeanLength', 'ANI','AvgReadGC','AvgRefGC',
-            'UniqueKmers', 'RatioDupKmers', 'TotalAlignments', 'PMDsover2', 'PMDSover4','taxpath'] 
+            'UniqueKmers', 'RatioDupKmers', 'TotalAlignments', 'UnaggregatedReads', 'PMDsover2', 'PMDSover4','taxpath'] 
     else:
         header = ['TaxNodeID', 'TaxName', 'TotalReads','Duplicity', 'MeanDust','Damage+1', 'Damage-1','MeanLength', 'ANI','AvgReadGC','AvgRefGC',
-            'UniqueKmers', 'RatioDupKmers', 'TotalAlignments', 'taxpath']
+            'UniqueKmers', 'RatioDupKmers', 'TotalAlignments', 'UnaggregatedReads', 'taxpath']
     statsfile.write("\t".join(header) + "\n")
     writer = csv.writer(
         statsfile,
@@ -428,7 +533,14 @@ def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_b
         tn = nodedata[node]
         
         # get formatted subs
-        fsubs = format_subs(tn['subs'], tn['total_reads'])
+        if mode == 1 or mode == 2: 
+            # if mode is 1, then subs is based off only the top alignment(s)
+            # if mode is 2, then subs is already averaged over all alignments for each read
+            # in both cases, you now want to weight it by total_reads
+            fsubs = format_subs(tn['subs'], tn['total_reads'])
+        if mode == 3:
+            # if mode is 3, then subs is currently summed over all alignments 
+            fsubs = format_subs(tn['subs'], tn['total_alignments'])
 
         # number of unique k-mers approximated by the hyperloglog algorithm 
         numuniquekmers = len(tn['hll'])
@@ -447,22 +559,26 @@ def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_b
 
         # only now calculate damage per node from the subs dict (see output subs file)
         # do not use formatted subs ; these should be raw numbers: how many READS for this taxa have these matches/mismatches?
-        # # (avg'd over all the alignments per read, so maybe not an integer) 
-        # also calculate the gc content for the average ref (so, unbiased by damage), weighted equally by read, not alignment
-        dp1, dm1, avgrefgc  = calculate_node_damage(tn['subs'], stranded)
+        # (possibly this is avg'd over all the alignments per read, so maybe not an integer) 
+        dp1, dm1  = calculate_node_damage(tn['subs'], stranded)
 
-        # 
         # write , number of columns depends on if you wanted pmds or not
         if pmds_in_bam:
+            if mode == 1 or mode == 2:
+                pd2 = tn['pmdsover2'] / tn['total_reads']
+                pd4 = tn['pmdsover4'] / tn['total_reads']
+            if mode == 3:
+                pd2 = tn['pmdsover2'] / tn['total_alignments']
+                pd4 = tn['pmdsover4'] / tn['total_alignments']
             row = [int(node), taxname, tn['total_reads'], round(duplicity, 3), round(tn['avgdust'], 2), 
                 round(dp1, 4), round(dm1, 4), 
-                round(tn['meanlength'], 2),  round(tn['ani'], 4), round(tn['avgreadgc'], 3),round(avgrefgc, 3), numuniquekmers, round(ratiodup,3),tn['total_alignments'],
-                round(tn['pmdsover2'] / tn['total_reads'], 3), round(tn['pmdsover4'] / tn['total_reads'], 3), tn['tax_path']]
+                round(tn['meanlength'], 2),  round(tn['ani'], 4), round(tn['avgreadgc'], 3),round(tn['avgrefgc'], 3), numuniquekmers, round(ratiodup,3),tn['total_alignments'],
+                round(pd2, 3), round(pd4, 3), tn['unaggregatedreads'], tn['tax_path']]
         else:
             row = [int(node), taxname, tn['total_reads'], round(duplicity, 2), round(tn['avgdust'], 2), 
                 round(dp1, 4), round(dm1, 4), 
-                round(tn['meanlength'], 2),  round(tn['ani'], 4), round(tn['avgreadgc'], 3),round(avgrefgc, 3),
-                numuniquekmers, round(ratiodup,3), tn['total_alignments'], tn['tax_path']]
+                round(tn['meanlength'], 2),  round(tn['ani'], 4), round(tn['avgreadgc'], 3),round(tn['avgrefgc'], 3),
+                numuniquekmers, round(ratiodup,3), tn['total_alignments'], tn['unaggregatedreads'], tn['tax_path']]
         rows.append(row)
 
         subsrows[int(node)] = [int(node), taxname, fsubs]

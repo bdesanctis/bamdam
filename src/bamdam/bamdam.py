@@ -42,12 +42,6 @@ def main():
 
     # Shrink
     parser_shrink = subparsers.add_parser('shrink', help="Filter the BAM and LCA files.")
-    parser_shrink.add_argument(
-        "--threads",
-        type=int,
-        default=1,
-        help="Number of CPU threads to use for BAM compression/decompression (default: 1)",
-    )
     parser_shrink.add_argument("--in_lca", type=str, required=True, help="Path to the input LCA file (required)")
     parser_shrink.add_argument("--in_bam", type=str, required=True, help="Path to the input (read-sorted) BAM file (required)")
     parser_shrink.add_argument("--out_lca", type=str, required=True, help="Path to the short output LCA file (required)")
@@ -58,7 +52,8 @@ def main():
     parser_shrink.add_argument("--minsim", type=float, default=0.9, help="Minimum similarity to reference to keep an alignment (default: 0.9)")
     parser_shrink.add_argument("--exclude_tax", type=str, nargs='+', default=[], help="Numeric tax ID(s) to exclude when filtering (default: none)")
     parser_shrink.add_argument("--exclude_tax_file", type=str, default=None, help="File of numeric tax ID(s) to exclude when filtering, one per line (default: none)")
-    parser_shrink.add_argument("--annotate_pmd", action='store_true', help="Annotate output bam file with PMD tags  (default: not set)")
+    parser_shrink.add_argument("--annotate_pmd", action='store_true', help="Annotate output bam file with PMD tags (default: not set)")
+    parser_shrink.add_argument("--show_progress", action='store_true', help="Print a progress bar (default: not set)")
     parser_shrink.set_defaults(func=shrink.run_shrink) 
 
     # Compute
@@ -70,17 +65,20 @@ def main():
     parser_compute.add_argument("--stranded", type=str, required=True, help="Either ss for single stranded or ds for double stranded (required)")
     parser_compute.add_argument("--k", type=int, default=29, help="Value of k for per-node counts of unique k-mers and duplicity (default: 29)")
     parser_compute.add_argument("--upto", type=str, default="family", help="Keep nodes up to and including this tax threshold; use root to disable (default: family)")
+    parser_compute.add_argument("--mode", type=int, default=1, help="Mode to calculate stats. 1: use best alignment (recommended), 2: average over reads, 3: average over alignments (default: 1)")
     parser_compute.add_argument("--plotdupdust", type=str, help="Path to create a duplicity-dust plot for this sample (default: not set)")
+    parser_compute.add_argument("--show_progress", action='store_true', help="Print a progress bar (default: not set)")
     parser_compute.set_defaults(func=compute.run_compute)
 
     # Extract
     parser_extract = subparsers.add_parser('extract', help="Extract bam alignments of reads assigned to specific taxa.")
     parser_extract.add_argument("--in_bam", type=str, required=True, help="Path to the BAM file (required)")
-    parser_extract.add_argument("--in_lca", type=str, required=True, help="Path to the LCA file (required)")
-    parser_extract.add_argument("--out_bam", type=str, required=True, help="Path to the filtered BAM file (required)")
+    parser_extract.add_argument("--in_lca", type=str, required=True, help="Path to the LCA file")
+    parser_extract.add_argument("--out_bam", type=str, required=True, help="Path to the output BAM file")
     parser_extract.add_argument("--tax", type=str, nargs='+', default=[], help="Numeric tax ID(s) to extract (default: none)")
     parser_extract.add_argument("--tax_file", type=str, default=None, help="File of numeric tax ID(s) to extract, one per line (default: none)")
     parser_extract.add_argument("--only_top_ref", action='store_true', help="Only keep alignments to the most-hit reference (default: not set)")
+    parser_extract.add_argument("--only_top_alignment", action='store_true', help="Only output the best alignment for each read. If there are multiple best alignments, randomly picks one (default: not set)")
     parser_extract.set_defaults(func=extract.run_extract)
 
     # Plot damage
@@ -112,9 +110,9 @@ def main():
     parser_combine.add_argument(
         "--include",
         nargs="*",
-        choices=["damage", "duplicity", "dust", "taxpath", "gc", "all", "none"],
-        default=["all"],
-        help="Additional metrics to include in output file. Specify any combination of the options, 'all', or 'none'. Supports: damage, duplicity, dust, taxpath, gc (default: all)",
+        choices=["Duplicity","MeanDust","Damage+1","Damage-1","MeanLength","ANI","AvgReadGC","AvgRefGC","UniqueKmers","RatioDupKmers","TotalAlignments","UnaggregatedReads"],
+        default=["none"],
+        help="Metrics to include in output file. Specify any combination of bamdam compute output tsv columns, 'all', or 'none'. TaxNodeID, TaxName, TotalReads and taxpath are always included. (default: none)",
     )
     parser_combine.set_defaults(func=combine.run_combine)
 
@@ -126,6 +124,7 @@ def main():
     group_input_krona.add_argument("--in_tsv_list", help="Path to a text file containing paths to input tsv files, one per line")
     parser_krona.add_argument("--out_xml", type=str, default="out.xml", help="Path to output xml file name (default: out.xml)")
     parser_krona.add_argument("--minreads", type=int, default=100, help="Minimum reads across samples to include taxa (default: 100)")
+    parser_krona.add_argument("--aggregate_to", type=str, default="superkingdom", help="The deepest internal taxonomic level to show in the krona plots. Will aggregate if this level is deeper than the taxonomic level the input tsv goes up to. (default: superkingdom)")
     parser_krona.add_argument("--maxdamage",type=float, default=None, help="Force a maximum value for the 5' C-to-T damage color scale. If not provided, the maximum value is determined from the data, with a minimum threshold of 0.3. (not recommended by default)")
     parser_krona.set_defaults(func=krona.run_krona)
 
@@ -159,7 +158,8 @@ def main():
     if hasattr(args, 'upto') and args.upto != args.upto.lower():
         parser.warning(f"Warning: {args.upto} as provided is not in lowercase, but it should be. Converting to lowercase and moving on.")
         args.upto = args.upto.lower()
-    
+    # probably add a check for all valid tax levels
+
     if hasattr(args, 'in_bam') and args.command != "plotbaminfo":
         sortorder = utils.get_sorting_order(args.in_bam)
         if sortorder != "queryname":
@@ -173,13 +173,12 @@ def main():
     if hasattr(args, 'in_bams') and hasattr(args, 'in_bam_list') and args.in_bam is not None and args.in_bam_list is not None:
         raise ValueError("You cannot specify both --in_bam and --in_bam_list at the same time. Use one or the other.")
 
-
     if hasattr(args, 'minreads') and args.minreads < 0:
         raise ValueError("Min reads must be a non-negative integer.")
     if hasattr(args, 'include'):
-        invalid_metrics = set(args.include) - {'damage', 'duplicity', 'dust', 'taxpath', 'all', 'none'}
+        invalid_metrics = set(args.include) - {'Duplicity','MeanDust','Damage+1','Damage-1','MeanLength','ANI','AvgReadGC','AvgRefGC','UniqueKmers','RatioDupKmers','TotalAlignments','UnaggregatedReads'}
         if invalid_metrics:
-            raise ValueError(f"Invalid metrics in --include: {', '.join(invalid_metrics)}. Allowed values are: 'damage', 'duplicity', 'dust', 'taxpath', 'all', 'none', or combinations of the first four.")
+            raise ValueError(f"Invalid metrics in --include: {', '.join(invalid_metrics)}. Allowed values are: 'Duplicity','MeanDust','Damage+1','Damage-1','MeanLength','ANI','AvgReadGC','AvgRefGC','UniqueKmers','RatioDupKmers','TotalAlignments',or 'UnaggregatedReads'.")
 
     if args.command == 'shrink':
         print("Hello! You are running bamdam shrink with the following arguments:")
@@ -192,7 +191,7 @@ def main():
         print(f"upto: {args.upto}")
         print(f"minsim: {args.minsim}")
         if hasattr(args, 'exclude_tax_file') and args.exclude_tax_file:
-            print(f"exclude_tax: loaded from {args.exclude_taxfile}")
+            print(f"exclude_tax: loaded from {args.exclude_tax_file}")
         if hasattr(args, 'exclude_tax') and args.exclude_tax:
             print(f"exclude_tax: {args.exclude_tax}")
         if hasattr(args, 'annotate_pmd') and args.annotate_pmd:
@@ -220,6 +219,7 @@ def main():
         else:
             print(f"tax_file: {args.tax_file}")
         print(f"only_top_ref: {args.only_top_ref}")
+        print(f"only_top_alignment: {args.only_top_alignment}")
 
     elif args.command == 'combine':
         print("Hello! You are running bamdam combine with the following arguments:")
@@ -240,17 +240,15 @@ def main():
             print(f"Input file list: {args.in_tsv_files}")
         print(f"Output file: {args.out_xml}")    
         print(f"Min reads: {args.minreads}")
+        print(f"Aggregate to: {args.aggregate_to}")    
         if hasattr(args, 'maxdamage') and args.maxdamage is not None:
             print(f"Max damage value for colour scale: {args.maxdamage}")
 
-    if not tqdm_imported:
-        print("The library tqdm is not available, so progress bars will not be shown. This will not impact performance.")
 
     if hasattr(args, 'func'):
         args.func(args)
     else:
         parser.print_help()
-
 
 
 if __name__ == "__main__":

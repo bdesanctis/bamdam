@@ -1,16 +1,22 @@
 ## <a name="quickstart"></a>Quick start
 
 ### Installation
+Requires python>=3.8. 
 - From [PyPi](https://pypi.org/project/bamdam/):
 ```console
 pip install bamdam 
+```
+or
+```console
+python -p pip install bamdam 
 ```
 - From source:
 ```console
 git clone https://github.com/bdesanctis/bamdam.git
 cd bamdam
-pip install .
+pip install . 
 ```
+
 ### Usage
 
 See [usage](#use) below for full documentation.
@@ -44,11 +50,9 @@ Bamdam is a post-mapping, post-least-common-ancestor toolkit for managing, authe
 
 The first two functions are bamdam **shrink** and bamdam **compute**. When mapping against large reference databases, the output bam files will often be huge and contain mostly irrelevant alignments; the reads with the most alignments are usually those assigned to uninformative taxonomic nodes (e.g. "Viridiplantae:kingdom"). The shrink command produces a much smaller bam (and associated lca file) which still contains all informative alignments. The compute command then takes in a (shrunken) bam and lca file and produces a large table in tsv format with one row per taxonomic node, including authentication metrics such as ancient DNA damage, k-mer duplicity and mean read complexity. All datasets are different, so users can then set their own filtering thresholds to decide which taxa look like real taxa rather than contaminants.
 
-The rest of the functions operate on the output of bamdam **shrink** and **compute**. The **extract** command extracts reads assigned to a specific taxonomic node from a bam file into another bam file for downstream analyses, optionally detecting the top reference for that node. The **plotdamage** command uses the subs file(s), a secondary output from bamdam compute, to quickly produce a (multi-sample) postmortem damage "smiley" plot for a specified taxonomic node. The **plotbaminfo** command takes a bam file as input (e.g. from bamdam extract), and plots the mismatch and read length distributions. The **combine** command takes multiple tsv files to create a multi-sample abundance/damage/etc matrix. Lastly the **krona** command converts one or more (optionally pre-filtered) bamdam tsv files into XMLs which can be imported into [KronaTools](https://github.com/marbl/Krona) to make interactive Krona plots, in which each taxa is coloured by its 5' C-to-T misincorporation frequency, and additional information such as duplicity and mean read length per taxa is embedded. [See an example here](https://bdesanctis.github.io/bamdam/example/microbe_krona.html)  (make sure to click "Color by Damage" on the left).
+The rest of the functions operate on the output of bamdam **shrink** and **compute**. The **extract** command extracts reads assigned to a specific taxonomic node from a bam file into another bam file for downstream analyses, optionally detecting the top reference for that node. The **plotdamage** command uses the subs file(s), a secondary output from bamdam compute, to quickly produce a (multi-sample) postmortem damage "smiley" plot for a specified taxonomic node. The **plotbaminfo** command takes a bam file as input (e.g. from bamdam extract), and plots the mismatch and read length distributions. The **combine** command takes multiple tsv files to create a multi-sample abundance/damage/etc matrix. Lastly the **krona** command converts one or more (optionally pre-filtered) bamdam tsv files into XMLs which can be imported into [KronaTools](https://github.com/marbl/Krona) to make interactive Krona plots, in which each taxa is coloured by its 5' C-to-T frequency, and additional information such as duplicity and mean read length per taxa is embedded. [See an example here](https://bdesanctis.github.io/bamdam/example/microbe_krona.html)  (make sure to click "Color by Damage" on the left).
 
 Bamdam reads and writes bams line-by-line, so it shouldn't need too much RAM (usually <8GB). A 50GB shotgun sequencing bam file takes a few hours on my laptop, and this should scale roughly linearly, with higher runtimes expected for capture or highly informative data. 
-
-There are still things I want to add/change: (a) aggregation for krona plots, (b) keep only the top alignment in shrink, (c) compute only on the top alignment (should get faster), (d) recalculate mapq scores on the fly so you don't need to remap downstream, etc. Suggestions welcome.
 
 We recommend running the [tutorial](#tutorial) first. Example data is provided.
 
@@ -61,7 +65,7 @@ We recommend running the [tutorial](#tutorial) first. Example data is provided.
 Input: Read-sorted bam file and associated lca file. Output: Smaller read-sorted bam file and associated lca file.
 
 ```
-usage: bamdam shrink [-h] [--threads THREADS] --in_lca IN_LCA --in_bam IN_BAM --out_lca OUT_LCA --out_bam OUT_BAM --stranded STRANDED
+usage: bamdam shrink [-h] --in_lca IN_LCA --in_bam IN_BAM --out_lca OUT_LCA --out_bam OUT_BAM --stranded STRANDED
                   [--mincount MINCOUNT] [--upto UPTO] [--minsim MINSIM] [--exclude_tax EXCLUDE_TAX [EXCLUDE_TAX ...]]
                   [--exclude_tax_file EXCLUDE_TAX_FILE] [--annotate_pmd]
 
@@ -101,14 +105,19 @@ Input: Read-sorted bam and associated lca file (both from bamdam shrink output).
 usage: bamdam compute [-h] --in_bam IN_BAM --in_lca IN_LCA --out_tsv OUT_TSV --out_subs OUT_SUBS --stranded STRANDED [--k K] [--upto UPTO]
 
 optional arguments:
-  -h, --help           show this help message and exit
-  --in_bam IN_BAM      Path to the BAM file (required)
-  --in_lca IN_LCA      Path to the LCA file (required)
-  --out_tsv OUT_TSV    Path to the output tsv file (required)
-  --out_subs OUT_SUBS  Path to the output subs file (required)
-  --stranded STRANDED  Either ss for single stranded or ds for double stranded (required)
-  --k K                Value of k for per-node counts of unique k-mers and duplicity (default: 29)
-  --upto UPTO          Keep nodes up to and including this tax threshold; use root to disable (default: family)
+  -h, --help            show this help message and exit
+  --in_bam IN_BAM       Path to the BAM file (required)
+  --in_lca IN_LCA       Path to the LCA file (required)
+  --out_tsv OUT_TSV     Path to the output tsv file (required)
+  --out_subs OUT_SUBS   Path to the output subs file (required)
+  --stranded STRANDED   Either ss for single stranded or ds for double stranded (required)
+  --k K                 Value of k for per-node counts of unique k-mers and duplicity (default: 29)
+  --upto UPTO           Keep nodes up to and including this tax threshold (default: family)
+  --mode MODE           Mode to calculate stats. 1: use best alignment (recommended), 2: average over reads, 3:
+                        average over alignments (default: 1)
+  --plotdupdust PLOTDUPDUST
+                        Path to create a duplicity-dust plot for this sample (default: not set)
+  --show_progress       Print a progress bar (default: not set)
 ```
 
 Full list of the output tsv columns:
@@ -118,30 +127,32 @@ Full list of the output tsv columns:
 - **TotalReads**: The number of reads assigned to that node or underneath.
 - **Duplicity**: The average number of times a k-mer has been seen, where the k-mers are from reads assigned to that node or underneath. Should be close to 1 (equivalent to no duplicated k-mers) unless coverage is high or breadth of coverage is uneven.
 - **MeanDust**: The average DUST score for reads assigned to that node or underneath. This is a measure of read set complexity based on trinucleotide counts which ranges from 0 to 100, where 100 is the least complex, and below 7 is roughly "high complexity".
-- **Damage+1**: The proportion of reads assigned to that node or underneath where every alignment of that read had a C->T on the 5' (+1) position. 
-- **Damage-1**: The proportion of reads assigned to that node or underneath where every alignment of that read had a C->T if single stranded, or a G->A if double stranded, on the 3' (-1) position.
+- **Damage+1**: The proportion of reads assigned to that node or underneath with a C->T on the 5' (+1) position. Depends on the mode.
+- **Damage-1**: The proportion of reads assigned to that node or underneath with a C->T if single stranded, or a G->A if double stranded, on the 3' (-1) position. Depends on the mode.
 - **MeanLength**: The mean length of the reads assigned to that node or underneath.
-- **ANI**: Average nucleotide identity of the reads assigned to that node or underneath. 
+- **ANI**: Average nucleotide identity of the reads assigned to that node or underneath. Uses the NM tag divided by the read length. Depends on the mode.
 - **AvgReadGC**: Average GC content of the reads assigned to that node or underneath.
-- **AvgRefGC**: Average GC content of the reconstructed reference genomic intervals associated to reads assigned to that node or underneath.
+- **AvgRefGC**: Average GC content of the reconstructed reference genomic intervals associated to reads assigned to that node or underneath. Depends on the mode.
 - **UniqueKmers**: The number of unique k-mers in the reads assigned to that node or underneath.
 - **RatioDupKmers**: Another way of thinking about duplicity: 1 minus the ratio of unique k-mers divided by the number of total k-mers. Should be close to 0 (equivalent to no duplicated k-mers) unless coverage is high or breadth of coverage is uneven.
 - **TotalAlignments**: Sum of the number of alignments for all the reads assigned to that node or underneath.
+- **UnaggregatedReads**: The number of reads assigned to exactly that node, not including any of those reads assigned to nodes underneath.
 - **taxpath**: The full taxonomic path from the lca file.
 
 If the input bam file was annotated with PMD scores, the tsv file will also contain columns **PMDSOver2** and **PMDSOver4**, indicating the proportion of PMD scores over 2 and 4 respectively.
 
-In all cases unless otherwise specified, each read (not each alignment) is weighted equally.
+The mode refers to the strategy for dealing with multiple alignments for each read when aggregating values over read sets for each taxonomic node. This affects the damage values, ANI, reference GC content, and subs file. The options are 1: only use the best alignment for each read, where "best" is determined by AS score and ties are broken by choosing a random best alignment, 2: average over all alignments per read, then weight each read equally or 3: weight all alignments equally, regardless of how many alignments there are per read. We recommend mode 1, which is by far the fastest because it only needs to process one alignment per read. 
 
 Bamdam compute aggregates statistics up the taxonomy and outputs rows for all taxonomic nodes up to the "upto" flag, so perhaps counterintuitively, results from bamdam compute after excluding higher-level taxonomic nodes in bamdam shrink may still contain rows for those nodes if there were reads assigned to nodes underneath those excluded which were not themselves excluded. We suggest considering --upto "phylum" for microbes.
 
 ### <a name="combine"></a>bamdam combine
 
-Takes in multiple tsv files from the output of bamdam compute, and combines them into one matrix. Output will always contain a total reads column, and by default will also include per-sample damage (on the 5' +1 position), the read-weighted damage mean over all samples per taxa, and the duplicity and dust per-sample. By default, only includes taxa with more than 50 total reads across samples. 
+Takes in multiple tsv files from the output of bamdam compute, and combines them into one matrix. Output will by default contain columns for TaxNodeID, TaxName and both per-sample and summed columns for TotalReads. You can optionally choose any other columns to combine from the bamdam compute output, and for each case, you will get both a read-weighted average of that metric, and all the per-sample values, in your output file. By default, only includes taxa with more than 50 total reads when summed across samples. 
 
 ```
-usage: bamdam combine [-h] (--in_tsv IN_TSV [IN_TSV ...] | --in_tsv_list IN_TSV_LIST) [--out_tsv OUT_TSV] [--minreads MINREADS]
-                   [--include [{damage,duplicity,dust,taxpath,gc,all,none} ...]]
+usage: bamdam combine [-h] (--in_tsv IN_TSV [IN_TSV ...] | --in_tsv_list IN_TSV_LIST) [--out_tsv OUT_TSV]
+                      [--minreads MINREADS]
+                      [--include [{Duplicity,MeanDust,Damage+1,Damage-1,MeanLength,ANI,AvgReadGC,AvgRefGC,UniqueKmers,RatioDupKmers,TotalAlignments,UnaggregatedReads} ...]]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -151,29 +162,31 @@ optional arguments:
                         Path to a text file containing paths to input tsv files, one per line
   --out_tsv OUT_TSV     Path to output tsv file name (default: combined.tsv)
   --minreads MINREADS   Minimum reads across samples to include taxa (default: 50)
-  --include [{damage,duplicity,dust,taxpath,gc,all,none} ...]
-                        Additional metrics to include in output file. Specify any combination of the options, 'all', or 'none'.
-                        Supports: damage, duplicity, dust, taxpath, gc (default: all)
+  --include [{Duplicity,MeanDust,Damage+1,Damage-1,MeanLength,ANI,AvgReadGC,AvgRefGC,UniqueKmers,RatioDupKmers,TotalAlignments,UnaggregatedReads} ...]
+                        Metrics to include in output file. Specify any combination of bamdam compute output tsv
+                        columns, 'all', or 'none'. TaxNodeID, TaxName, TotalReads and taxpath are always
+                        included. (default: none)
 ```
 
 ### <a name="extract"></a>bamdam extract
 
-Extracts reads assigned to a specific taxonomic node or underneath from a bam file. Output is another bam file, also with a subsetted header to only include those references which appear in output bam alignments. Accepts numeric tax IDs. You can also choose to only include alignments to the most-hit reference genome to obtain a single-reference-genome bam. 
+Extracts from a bam file (a) reads which have been assigned to a subset of taxonomic nodes or underneath, and/or (b) the best alignment for each read, and/or (c) reads which are assigned to the best reference sequence. Output is another bam file. The output bam will have a reduced header to only include those references which appear in the output bam alignments. Accepts numeric tax IDs. 
 
 ```
 usage: bamdam extract [-h] --in_bam IN_BAM --in_lca IN_LCA --out_bam OUT_BAM [--tax TAX [TAX ...]] [--tax_file TAX_FILE] [--only_top_ref]
 
 optional arguments:
-  -h, --help           show this help message and exit
-  --in_bam IN_BAM      Path to the BAM file (required)
-  --in_lca IN_LCA      Path to the LCA file (required)
-  --out_bam OUT_BAM    Path to the filtered BAM file (required)
-  --tax TAX [TAX ...]  Numeric tax ID(s) to extract (default: none)
-  --tax_file TAX_FILE  File of numeric tax ID(s) to extract, one per line (default: none)
-  --only_top_ref       Only keep alignments to the most-hit reference (default: not set)
+  -h, --help              show this help message and exit
+  --in_bam IN_BAM         Path to the BAM file (required)
+  --in_lca IN_LCA         Path to the LCA file (required)
+  --out_bam OUT_BAM       Path to the filtered BAM file (required)
+  --tax TAX [TAX ...]     Numeric tax ID(s) to extract (default: none)
+  --tax_file TAX_FILE     File of numeric tax ID(s) to extract, one per line (default: none)
+  --only_top_ref          Only keep alignments to the most-hit reference (default: not set)
+  --only_top_alignment    Only output the best alignment for each read. If there are multiple best alignments, randomly picks one (default: not set)
 ```
 
-Note that bamdam extract output may still contain multi-mappers i.e. multiple alignments per read, and if you can't trust your mapping quality scores (which might be the case if you mapped against the reference database in separate chunks), you might consider quickly re-mapping these reads to their single reference genome before continuing with some downstream steps. See the tutorial for an example of this.
+The best alignment is chosen by alignment score (AS tag), which is still meaningful after merging bams mapped to more than one reference (whereas mapping quality is not). Unless you choose only_top_alignment, bamdam extract output will still contain multiple alignments per read. If you specify both --only_top_ref and --only_top_alignment, you will get for each read the best alignment to that reference, not necessarily the best alignment overall. The top reference sequence is chosen by total number of alignments. 
 
 ### <a name="plotdamage"></a>bamdam plotdamage
 
@@ -227,16 +240,19 @@ usage: bamdam krona [-h] (--in_tsv IN_TSV [IN_TSV ...] | --in_tsv_list IN_TSV_LI
                     [--minreads MINREADS]
 
 optional arguments:
-  -h, --help            show this help message and exit
+  -h, --help                  show this help message and exit
   --in_tsv IN_TSV [IN_TSV ...]
-                        Path to tsv file(s) (required)
+                              Path to tsv file(s) (required)
   --in_tsv_list IN_TSV_LIST
-                        Path to a text file containing paths to input tsv files, one per line.
-  --out_xml OUT_XML     Path to output xml file name (default: out.xml)
-  --minreads MINREADS   Minimum reads across samples to include taxa (default: 100)
+                              Path to a text file containing paths to input tsv files, one per line.
+  --out_xml OUT_XML           Path to output xml file name (default: out.xml)
+  --minreads MINREADS         Minimum reads across samples to include taxa (default: 100)
+  --aggregate_to AGGREGATE_TO The deepest internal taxonomic level to show in the krona plots. Will aggregate if this level is deeper than the taxonomic level the input tsv goes up to.    (default: kingdom)
   --maxdamage MAXDAMAGE
-                        Force a maximum value for the 5' C-to-T damage color scale. If not provided, the maximum value is determined from the data, with a minimum threshold of 0.3. (not recommended by default)
+                              Force a maximum value for the 5' C-to-T damage color scale. If not provided, the maximum value is determined from the data, with a minimum threshold of 0.3. (not recommended by default)
 ```
+
+Since you probably shrunk your bam files to only contain reads up to some taxonomic level (e.g. family) with bamdam shrink, but it can be nice to group taxa by deeper groups for visualization purposes, bamdam krona will aggregate information back up the taxonomy. This means that, if you ran bamdam compute with --upto family and then bamdam krona with --aggregate_to kingdom (the default behavior), you will see information for all the in-between taxonomic levels (e.g. order, class, phylum) in your Krona plots, which has been obtained by summing reads and taking read-weighted averages of damage, duplicity, etc. 
 
  [See an example output here](https://bdesanctis.github.io/bamdam/example/microbe_krona.html)  (make sure to click "Color by Damage" on the left). 
 
@@ -249,48 +265,39 @@ You can follow this tutorial on a laptop in about 20 minutes. We will analyze a 
 wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/CGG3_015421.lca
 wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/CGG3_015421.sub_sorted.bam
 ```
-Running the main bamdam commands may take another few minutes.
+Run the main bamdam commands.
 ```
-bamdam shrink --in_bam CGG3_015421.sub_sorted.bam --in_lca CGG3_015421.lca --out_bam CGG3.small.bam --out_lca CGG3.small.lca --stranded ds
-bamdam compute --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_tsv CGG3.tsv --out_subs CGG3.subs.txt --stranded ds
+bamdam shrink --in_bam CGG3_015421.sub_sorted.bam --in_lca CGG3_015421.lca --out_bam CGG3.small.bam --out_lca CGG3.small.lca --stranded ds --show_progress
+bamdam compute --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_tsv CGG3.tsv --out_subs CGG3.subs.txt --stranded ds --show_progress
 ```
 Now you can look at the output files and see what's in there. The tsv is ordered by read count.
 ```
 head CGG3.tsv
 ```
-Looks like the top hit is the plant subfamily Myrtoideae, with tax ID 1699513. This looks real and ancient: k-mer duplicity close to 1, sufficiently low mean DUST score, high amounts of damage on both ends, short read length, etc. Let's take a closer look and plot damage for this taxa.
+One of the top hits is the plant subfamily Myrtoideae, with tax ID 1699513. This looks real and ancient: k-mer duplicity close to 1, sufficiently low mean DUST score, high amounts of damage on both ends, short read length, etc. Let's take a closer look and plot damage for this taxa.
 ```
 bamdam plotdamage --in_subs CGG3.subs.txt --tax 1699513 --outplot CGG3_Myrtoidae_damageplot.png
 ```
-Now let's plot the mismatch and read length distributions for all Myrtoideae reads. 
+Though the duplicity looks fine, for a further sanity check we can look directly at coverage across the most common reference sequence for this subfamily. First use bamdam to extract one alignment per read for the top reference.
 ```
-bamdam extract --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_bam CGG3.Myrtoideae.bam --tax 1699513
-bamdam plotbaminfo --in_bam CGG3.Myrtoideae.bam --outplot CGG3_Myrtoideae_baminfo.png
+bamdam extract --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_bam CGG3.Myrtoideae.bam --tax 1699513 --only_top_alignment --only_top_ref
 ```
-We might want to investigate reference-specific properties like evenness of coverage. Let's extract only those Myrtoidae reads which hit the most common Myrtoidae reference. This might take a minute.
-```
-bamdam extract --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_bam CGG3.MyrtoideaeTopRef.bam --tax 1699513 --only_top_ref 
-```
-The command-line output also tells you the most common reference genome, NW_026607485.1. 
-
-Skip this part if you want, but as a brief aside, let's give an example of a potential downstream step getting a simple coverage plot on a reference genome. We'll need samtools and bowtie2. Remember the extracted bam still has multimappers, and that you can't filter by mapping quality because using bowtie2 with multimapping means you don't get any map quality scores. So let's download the top-hit reference, remap to it with bowtie2 (which defaults to one alignment per read with a correct mapping quality), filter, coordinate sort, and make a samtools command-line reference-specific coverage plot. This took a few minutes on my laptop. (Note: I intend to fix the need for remapping by implementing a recomputation of mapq sometime soon...)
+The command-line output also tells you the most common reference genome, NW_026607485.1. You can download it and use samtools for a quick coverage plot in the command line. You could continue downstream analyses from here.
 ```
 wget "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nucleotide&id=NW_026607485.1&rettype=fasta&retmode=text" -O NW_026607485.1.fasta
-bowtie2-build NW_026607485.1.fasta NW_026607485.1.fasta
-samtools fastq CGG3.MyrtoideaeTopRef.bam > CGG3.MyrtoideaeTopRef.fq
-bowtie2 -x NW_026607485.1.fasta -U CGG3.MyrtoideaeTopRef.fq | samtools view -bS - | samtools sort > CGG3.Myrtoideae.filtered.bam
-samtools coverage CGG3.Myrtoideae.filtered.bam -m
+samtools sort -o CGG3.Myrtoideae.sort.bam CGG3.Myrtoideae.bam
+samtools coverage CGG3.Myrtoideae.sort.bam -m
 ```
-
-Back to bamdam. The next part of this tutorial is about combining and visualizing multiple samples together, so we will need to download a few more tsv files. Let's also switch datasets to showcase a broader range of data - though you can also run all the following commands on the tsv we just created. These new files are from an unpublished ancient microbial study with single-stranded library prep, and were generated from bamdam shrink + compute after using ngsLCA with the GTDB taxonomy.
+The next part of this tutorial is about combining and visualizing multiple samples together, so we will need to download a few more tsv files. Let's also switch datasets to showcase a broader range of data - though you can also run all the following commands on the tsv we just created. These new files are from an unpublished ancient microbial study with single-stranded library prep, and were generated from bamdam shrink + compute after using ngsLCA with the GTDB taxonomy.
 ```
-wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/microbes1.tsv
-wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/microbes2.tsv
-wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/microbes_control.tsv
+wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/microbesample1.tsv
+wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/microbesample2.tsv
+wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/microbesample3.tsv
+wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/microbecontrol.tsv
 ```
 We can combine multiple files into a single matrix. By default this will include the tax name, total reads, read-weighted mean damage, and per-sample per-taxa damage, duplicity and dust. 
 ```
-ls microbes*tsv > input_list.txt
+ls microbe*tsv > input_list.txt
 bamdam combine --in_tsv_list input_list.txt --out_tsv combined_microbes.tsv
 head combined_microbes.tsv
 ```
@@ -299,10 +306,10 @@ Lastly we create a set of interactive, damage-coloured Krona plots by converting
 bamdam krona --in_tsv_list input_list.txt --out_xml microbes.xml
 ktImportXML -o microbes.html microbes.xml
 ```
-Once you get the html file, you can open it in any web browser. Make sure to click "Colour by damage" in the bottom left!
+Once you get the html file, you can open it in any web browser. Make sure to click "Colour by damage" in the bottom left.
 
 ## <a name="contributing"></a>Contributing
-Contributions are welcome, and they are greatly appreciated! Every little bit helps, and credit will always be given.
+Contributions are welcome and appreciated. 
 
 ### Pull Request Guidelines
 To update the documentation, fix bugs or add new features you need to create a Pull Request . A PR is a change you make to your local copy of the code for us to review and potentially integrate into the code base.
@@ -320,7 +327,6 @@ To create a Pull Request you need to do these steps:
 5. Create a new branch with `git checkout -b <descriptive_branch_name>`.
 
 6. Make your changes to the code or documentation.
-
 
 7. Run `git add .` to add all the changed files to the commit (to see what files will be added you can run `git add . --dry-run`).
 

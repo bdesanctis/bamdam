@@ -10,11 +10,6 @@ import math
 import argparse
 import os
 from functools import lru_cache
-try: # optional library for progress bars 
-    from tqdm import tqdm
-    tqdm_imported = True
-except ImportError:
-    tqdm_imported = False
 
 # local
 from bamdam import utils
@@ -25,8 +20,8 @@ def run_shrink(args):
     lca_file_type = utils.find_lca_type(args.in_lca)
     if(lca_file_type == "metadmg"):
         print("You are running bamdam shrink with a metaDMG-style lca file. This is ok, but be aware the output lca file will be in ngsLCA lca file format, as all the other functions in bamdam require this format.")
-    shortlcalines = write_shortened_lca(args.in_lca, args.out_lca, args.upto, args.mincount, formatted_exclude_tax, lca_file_type)
-    write_shortened_bam(args.in_bam, args.out_lca, args.out_bam, args.stranded, args.minsim, args.annotate_pmd, shortlcalines, args.threads)
+    shortlcalines = write_shortened_lca(args.in_lca, args.out_lca, args.upto, args.mincount, formatted_exclude_tax, lca_file_type, args.show_progress)
+    write_shortened_bam(args.in_bam, args.out_lca, args.out_bam, args.stranded, args.minsim, args.annotate_pmd, shortlcalines, args.show_progress)
 
 
 def parse_exclude_tax(args):
@@ -58,14 +53,14 @@ def parse_exclude_tax(args):
         return []
 
 
-def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_tax,lca_file_type): 
+def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_tax,lca_file_type,show_progress=False): 
 
     print("\nWriting a filtered lca file...")
 
     lcaheaderlines = 0
     with open(original_lca_path, 'r') as lcafile:
         for lcaline in lcafile:
-            if "root" in lcaline and "#" not in lcaline:
+            if "no rank" in lcaline and "#" not in lcaline:
                 break
             lcaheaderlines += 1
     total_short_lca_lines = 0
@@ -164,22 +159,33 @@ def write_shortened_bam(
     minsimilarity,
     annotate_pmd,
     totallcalines,
-    threads=1,
+    show_progress=False
 ):
     # runs through the existing bam and the new short lca file at once, and writes only lines to the new bam which are represented in the short lca file
     # also optionally annotates with pmd scores as it goes
     # takes in minsimilarity as a percentage, and will keep reads w/ equal to or greater than 1 - NM flag divided by read length to this percentage 
 
-    if tqdm_imported:
-        print(f"Writing a filtered bam file (a progress bar will initiate once the bam header has been written)...")
-    else:
-        print(f"Writing a filtered bam file...")
+    print(f"Writing a filtered bam file...")
+
+    # do we want a progress bar?
+    showing_progress = False
+    if show_progress:
+        try: # optional library for progress bars 
+            from tqdm import tqdm
+            tqdm_imported = True
+        except ImportError:
+            tqdm_imported = False
+        if not tqdm_imported: # you can't have one after all
+            print("The library tqdm is not available, so progress bars will not be shown. This will not impact performance.")
+        else:
+            showing_progress = True
+            print(f"A progress bar will initiate once the bam header has been written.")
 
     # go and get get header lines in the OUTPUT lca, not the input (it will be 0, but just in case I modify code in the future)
     lcaheaderlines = 0
     with open(short_lca_path, 'r') as lcafile:
         for lcaline in lcafile:
-            if "root" in lcaline and "#" not in lcaline:
+            if "no rank" in lcaline and "#" not in lcaline:
                 break
             lcaheaderlines += 1
     currentlcaline = lcaheaderlines
@@ -190,10 +196,9 @@ def write_shortened_bam(
             "rb",
             check_sq=False,
             require_index=False,
-            threads=threads,
         ) as infile,
         pysam.AlignmentFile(
-            short_bam_path, "wb", template=infile, threads=threads
+            short_bam_path, "wb", template=infile
         ) as outfile,
         open(short_lca_path, "r") as shortlcafile,
     ):
@@ -215,8 +220,8 @@ def write_shortened_bam(
         except StopIteration:
             notdone = False
 
-        progress_bar = tqdm(total=totallcalines-lcaheaderlines, unit='lines', disable=not tqdm_imported) if tqdm_imported else None
-        if progress_bar:
+        if showing_progress:
+            progress_bar = tqdm(total=totallcalines-lcaheaderlines, unit='lines', disable=not tqdm_imported) if tqdm_imported else None
             update_interval = 100 # this is arbitrary. could also be e.g. (totallcalines // 1000)
 
         while notdone:
@@ -250,7 +255,7 @@ def write_shortened_bam(
                     tab_split = lcaline.find('\t')
                     lcareadname = lcaline[:tab_split].rsplit(':', 3)[0]
                     currentlcaline +=1 
-                    if progress_bar and currentlcaline % update_interval == 0 :
+                    if showing_progress and progress_bar and currentlcaline % update_interval == 0 :
                         progress_bar.update(update_interval) 
                 except StopIteration:
                     notdone = False
@@ -260,7 +265,7 @@ def write_shortened_bam(
                     bamreadnumber +=1 
                 except StopIteration:
                     notdone = False
-    if progress_bar:
+    if showing_progress and progress_bar:
         progress_bar.close()
 
     print("Wrote a filtered bam file. Done! \n") 
