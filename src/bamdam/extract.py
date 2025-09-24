@@ -114,7 +114,6 @@ def extract_reads(in_lca, in_bam, out_bam, tax, only_top_ref = False, only_top_a
             print(f"Your output bam will contain all of the alignments to this reference, even if there is more than one per read.")
         header['SQ'] = [sq for sq in header.get('SQ', []) if sq['SN'] == most_common_reference] 
         reference_names = {most_common_reference}
-        print(f"{reference_names}")
     else: # get all the headers matching all of the refs we hit with our reads
         reference_names = set(reference_count.keys())
         header['SQ'] = [sq for sq in header.get('SQ', []) if sq['SN'] in reference_names]

@@ -110,9 +110,9 @@ def main():
     parser_combine.add_argument(
         "--include",
         nargs="*",
-        choices=["Duplicity","MeanDust","Damage+1","Damage-1","MeanLength","ANI","AvgReadGC","AvgRefGC","UniqueKmers","RatioDupKmers","TotalAlignments","UnaggregatedReads"],
+        choices=["Duplicity","MeanDust","Damage+1","Damage-1","MeanLength","ANI","AvgReadGC","AvgRefGC","UniqueKmers","RatioDupKmers","TotalAlignments","UnaggregatedReads","none"],
         default=["none"],
-        help="Metrics to include in output file. Specify any combination of bamdam compute output tsv columns, 'all', or 'none'. TaxNodeID, TaxName, TotalReads and taxpath are always included. (default: none)",
+        help="Metrics to include in output file. Specify any combination of bamdam compute output tsv columns. TaxNodeID, TaxName, TotalReads and taxpath are always included. (default: none)",
     )
     parser_combine.set_defaults(func=combine.run_combine)
 
@@ -176,7 +176,7 @@ def main():
     if hasattr(args, 'minreads') and args.minreads < 0:
         raise ValueError("Min reads must be a non-negative integer.")
     if hasattr(args, 'include'):
-        invalid_metrics = set(args.include) - {'Duplicity','MeanDust','Damage+1','Damage-1','MeanLength','ANI','AvgReadGC','AvgRefGC','UniqueKmers','RatioDupKmers','TotalAlignments','UnaggregatedReads'}
+        invalid_metrics = set(args.include) - {'Duplicity','MeanDust','Damage+1','Damage-1','MeanLength','ANI','AvgReadGC','AvgRefGC','UniqueKmers','RatioDupKmers','TotalAlignments','UnaggregatedReads','none'}
         if invalid_metrics:
             raise ValueError(f"Invalid metrics in --include: {', '.join(invalid_metrics)}. Allowed values are: 'Duplicity','MeanDust','Damage+1','Damage-1','MeanLength','ANI','AvgReadGC','AvgRefGC','UniqueKmers','RatioDupKmers','TotalAlignments',or 'UnaggregatedReads'.")
 
