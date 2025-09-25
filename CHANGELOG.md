@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.0](https://github.com/bdesanctis/bamdam/compare/v0.2.2...v0.3.0) (2025-09-25)
+
+
+### Features
+
+* many small additions and fixes ([37a99d4](https://github.com/bdesanctis/bamdam/commit/37a99d4e942bd1e9fbd20f10b244fe92b28a183e))
+
+
+### Bug Fixes
+
+* correct shrink test arguments ([0d37984](https://github.com/bdesanctis/bamdam/commit/0d37984ca7f4670bbd1db7509eccbec79e7b5a8f))
+* modularization bug fix ([ea8e551](https://github.com/bdesanctis/bamdam/commit/ea8e5516bcbb9326c23381001c3e68cd07f5a9e9))
+* shrink test attributes ([0d6f40a](https://github.com/bdesanctis/bamdam/commit/0d6f40afd352ee7a7a128196c9e89d610257a652))
+* small bug in combine input arguments ([7e972fc](https://github.com/bdesanctis/bamdam/commit/7e972fc0e72cf3d2c30ed891cd0485783ecf71a1))
+
 ## [0.2.2](https://github.com/bdesanctis/bamdam/compare/v0.2.1...v0.2.2) (2025-07-09)
 
 
