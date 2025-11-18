@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/bdesanctis/bamdam/compare/v0.4.0...v0.4.1) (2025-11-18)
+
+
+### Dependencies
+
+* update pysam ([71e5923](https://github.com/bdesanctis/bamdam/commit/71e5923a47a6d26e1c95acefd027e0fbd510693c))
+
 ## [0.4.0](https://github.com/bdesanctis/bamdam/compare/v0.3.0...v0.4.0) (2025-11-18)
 
 
