@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = { file = "LICENSE" }
 authors = [{ name = "Bianca De Sanctis", email = "bddesanctis@gmail.com" }]
-dependencies = ["hyperloglog", "matplotlib", "tqdm"]  # Removed pysam from here
+dependencies = ["hyperloglog", "matplotlib", "tqdm"]
 
 [project.scripts]
 bamdam = "bamdam.bamdam:main"
@@ -50,7 +50,7 @@ cmd = [
   "--cov=bamdam",
   "--cov-report=xml:coverage-report/coverage.xml",
   "--cov-report=term-missing",
-  "tests/tests.py"
+  "tests/tests.py",
 ]
 
 # Publish
