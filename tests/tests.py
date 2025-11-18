@@ -36,7 +36,7 @@ def test_shrink(tmp_path):
     args.exclude_tax_file = None
     args.annotate_pmd = False
     args.show_progress = False
-
+    args.dust_max = 0
     shrink.run_shrink(args)
 
     # Check if output files exist
