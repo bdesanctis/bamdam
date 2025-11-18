@@ -18,6 +18,7 @@ except ImportError:
 # local
 from bamdam import utils
 
+
 def get_mismatches(seq, cigar, md):  
     # parses a read, cigar and md string to determine mismatches and positions. 
     # does not output info on insertions/deletions, but accounts for them.
@@ -219,13 +220,14 @@ def get_pmd(read, stranded):
     phred = [0 if base in ['-', 'N'] else rawphred.pop(0) for base in readseq]
 
     # run through both sequences to add up pmd likelihoods
+    if backwards:
+        # print(refseq)
+        refseqlist = utils.rev_complement(refseq)
+        readseqlist = utils.rev_complement(readseq)
+        phred = phred[::-1]
     refseqlist = list(refseq)
     readseqlist = list(readseq)
     readlength = len(readseqlist)
-    if backwards:
-        refseqlist = utils.rev_complement(refseqlist)
-        readseqlist = utils.rev_complement(readseqlist)
-        phred = phred[::-1]
     pmd_lik = 1
     null_lik = 1
     pos = 0 # need a separate tracker to cope with indels. if there's a "-" in the read reconstruction because of an insertion in the ref, it should not count as a "position" in the read

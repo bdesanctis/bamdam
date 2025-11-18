@@ -17,7 +17,6 @@ from functools import lru_cache
 def run_krona(args):
     make_krona_xml(args.in_tsv, args.in_tsv_list, args.out_xml, args.minreads, args.maxdamage, args.aggregate_to)
 
-
 def make_krona_xml(in_tsv, in_tsv_files, out_xml, minreads, maxdamage, aggregateto):
     # create an xml text file to be loaded into kronatools for visualization. adds damage as a colour option.
 
@@ -29,6 +28,13 @@ def make_krona_xml(in_tsv, in_tsv_files, out_xml, minreads, maxdamage, aggregate
     input_files = []
     if in_tsv:
         input_files = in_tsv
+    # catch if we got a list of tsvs accidentally with the wrong flag
+    if len(input_files) == 1:
+        with open(input_files[0], 'r') as f:
+            first_line = f.readline().strip()
+            if '.tsv' in first_line:
+                print(f"Error: It looks like {input_files[0]} is a list of TSV files, not a TSV file itself. If this is the case, use --in_tsv_list instead of --in_tsv.")
+                exit(-1)
     elif in_tsv_files:
         with open(in_tsv_files, 'r') as file:
             input_files = [line.strip() for line in file if line.strip()]   
@@ -46,7 +52,12 @@ def make_krona_xml(in_tsv, in_tsv_files, out_xml, minreads, maxdamage, aggregate
                 continue
             header = lines[0].strip().split('\t')
             if header[0] != "TaxNodeID":
+                print(header)
                 print(f"Error: It looks like your input tsv file {file} was not generated from bamdam compute or bamdam combine, or perhaps you edited the header.")
+                continue
+            aggregate_marker = f":{aggregateto}"
+            if not any(aggregate_marker in line for line in lines):
+                print(f"Warning: File {file} does not contain any taxa at the '{aggregateto}' level. This file will be excluded. If you keep seeing this message, consider changing the --aggregate_to flag.")
                 continue
             fields = lines[1].strip().split('\t')
             try:
@@ -62,7 +73,6 @@ def make_krona_xml(in_tsv, in_tsv_files, out_xml, minreads, maxdamage, aggregate
         if file not in valid_files: # avoid accidental duplicates
             valid_files.append(file)
     input_files = valid_files
-
     # If no valid files remain, exit early
     if not input_files:
         print("Error: No valid input files remain after filtering. Exiting.")

@@ -69,7 +69,7 @@ def extract_reads(in_lca, in_bam, out_bam, tax, only_top_ref = False, only_top_a
             print("No taxonomic nodes specified. Will extract the best alignment for each read.")
         else:
             print("Error: No taxonomic nodes specified. Please specify at least one of: a list of taxonomic nodes, only_top_ref or only_top_alignment.")
-            exit(-1)
+            sys.exit(1)
     else:
         # surround the tax ids so that you don't get e.g. 2001 when you wanted 200
         tax_pattern = "|".join([f"[[:space:]]{t}:" for t in tax])
@@ -92,7 +92,7 @@ def extract_reads(in_lca, in_bam, out_bam, tax, only_top_ref = False, only_top_a
     read_names = set(result.stdout.strip().splitlines())
     if(len(read_names) == 0):
         print(f"Error: No reads are assigned to tax id {tax[0]}. Please use numeric tax ids as input, and make sure they appear in your lca or tsv file.")
-        exit(-1)
+        sys.exit(1)
 
     # count ref hits among those read names (have to do this either way to relink ref IDs at the end, but as a bonus we can find the most common ref with this too)
     with pysam.AlignmentFile(in_bam, "rb") as bam_in:
@@ -140,7 +140,7 @@ def extract_reads(in_lca, in_bam, out_bam, tax, only_top_ref = False, only_top_a
                                     current_best_alignment = current_best_alignment_list[0] # there is only one best alignment for this read
                                 elif len(current_best_alignment_list) == 0:
                                     print(f"Error: No best alignment found for read {current_read_name}")
-                                    exit(-1) # this should not happen
+                                    sys.exit(1) # this should not happen
                                 if current_best_alignment.reference_id >= 0: 
                                     current_best_alignment.reference_id = ref_name_to_id[ref_name] 
                                     # relink the reference_id to match the new header
@@ -156,7 +156,7 @@ def extract_reads(in_lca, in_bam, out_bam, tax, only_top_ref = False, only_top_a
                                     alignment_score = int(alignment.get_tag("AS"))
                                 except KeyError:
                                     print("Error: Can't find AS tags for at least one of your alignments in the BAM file, so it is not possible to determine the best alignments.")
-                                    exit(-1)
+                                    sys.exit(1)
                                 if alignment_score > current_best_alignment_score:
                                     current_best_alignment_list = [alignment]
                                     current_best_alignment_score = alignment_score
@@ -172,7 +172,7 @@ def extract_reads(in_lca, in_bam, out_bam, tax, only_top_ref = False, only_top_a
                     current_best_alignment = current_best_alignment_list[0] # there is only one best alignment for this read
                 elif len(current_best_alignment_list) == 0:
                     print(f"Error: No best alignment found for read {current_read_name}")
-                    exit(-1) # this should not happen
+                    sys.exit(1) # this should not happen
                 if current_best_alignment.reference_id >= 0: 
                     current_best_alignment.reference_id = ref_name_to_id[relevant_ref_name] 
                     # relink the reference_id to match the new header

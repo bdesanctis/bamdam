@@ -40,38 +40,54 @@ def run_combine(args):
 
 def tsvs_to_matrix(parsed_data, headers, output_file, include=['none'], minreads=50):
     # for combine. pretty straightforward, read them all in and construct the matrix by pulling values out as needed
-    # "meandamage" output is actually weighted by number of reads
+    # "meandamage" output (both for +1 and -1) is actually weighted by number of reads
+    # otherwise everything else is a straightforward unweighted average 
+
+    # by default this will include the tax name, total reads, damage, duplicity and dust. 
 
     col_indices = {}
-    required_cols = ['TaxNodeID', 'TaxName', 'TotalReads', 'taxpath']
-    available_cols = ['Duplicity', 'MeanDust', 'Damage+1', 'Damage-1', 'MeanLength', 
-        'ANI', 'AvgReadGC', 'AvgRefGC', 'UniqueKmers', 'RatioDupKmers', 'TotalAlignments', 'UnaggregatedReads']
-    
+    required_cols = ['TaxNodeID','TaxName','TotalReads','Duplicity','MeanDust','Damage+1','taxpath']
+    available_cols = ['Damage-1', 'MeanLength','ANI', 'AvgReadGC', 'AvgRefGC', 'UniqueKmers', 'UniqKmersPerRead', 'TotalAlignments', 'UnaggregatedReads']
+    potential_udg_cols = ['Damage+1_CpG', 'Damage+1_nonCpG']
+
+    # make it so potential_udg_cols are options for input, and included in "all" if they're present in the file,
+    # but you don't print a warning if they're not there unless the user explicitly asks for them. 
+
     for col in required_cols:
         try:
             col_indices[col] = headers.index(col)
         except ValueError:
             print(f"Error: Required column '{col}' not found in input files. Are all your input files bamdam compute output with their original headers?")
-            sys.exit(-1)
+            sys.exit(1)
     
-    for col in available_cols:
+    for col in available_cols + potential_udg_cols:
+        if col in headers:
+            col_indices[col] = headers.index(col)
+
+    if include == ['none']:
+        include_cols = ['Duplicity', 'MeanDust', 'Damage+1']  # default set from required_cols
+    elif 'all' in include:
+        include_cols = ['Duplicity', 'MeanDust', 'Damage+1'] + [col for col in available_cols if col in col_indices]
+        for udg_col in potential_udg_cols:
+            if udg_col in headers:
+                include_cols.append(udg_col)
+        # search for potential_udg_cols in the actual file(s), if they're there, add them to include_cols. 
+    else:
+        include_cols = ['Duplicity', 'MeanDust', 'Damage+1']  # start with defaults
+        for col in include:
+            if col in col_indices and col not in include_cols:
+                include_cols.append(col)
+            elif col not in col_indices:
+                print(f"Error: Requested column '{col}' not found in input files.")
+                sys.exit(1)
+
+    # make sure everything the user wants is available in the input files
+    for col in include_cols:
         try:
             col_indices[col] = headers.index(col)
         except ValueError:
             print(f"Warning: Column '{col}' not found in input files. Are all your input files bamdam compute output with their original headers?")
 
-    if include == ['none']:
-        include_cols = []
-    elif 'all' in include:
-        include_cols = [col for col in available_cols if col in col_indices]
-    else:
-        include_cols = []
-        for col in include:
-            if col in col_indices:
-                include_cols.append(col)
-            else:
-                print(f"Error: Requested column '{col}' not found in input files.")
-                sys.exit(-1)
 
     tax_data = {}
     for sample_name, records in parsed_data.items():
@@ -109,7 +125,7 @@ def tsvs_to_matrix(parsed_data, headers, output_file, include=['none'], minreads
                         
             except (ValueError, IndexError):
                 print("Error: At least one of the input files does not appear to be an output file from bamdam compute.")
-                sys.exit(-1)
+                sys.exit(1)
             
             tax_data[tax_node_id]['samples'][sample_name] = sample_data
             tax_data[tax_node_id]['TotalReads'] += total_reads

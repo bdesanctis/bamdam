@@ -20,7 +20,7 @@ def run_shrink(args):
     lca_file_type = utils.find_lca_type(args.in_lca)
     if(lca_file_type == "metadmg"):
         print("You are running bamdam shrink with a metaDMG-style lca file. This is ok, but be aware the output lca file will be in ngsLCA lca file format, as all the other functions in bamdam require this format.")
-    shortlcalines = write_shortened_lca(args.in_lca, args.out_lca, args.upto, args.mincount, formatted_exclude_tax, lca_file_type, args.show_progress)
+    shortlcalines = write_shortened_lca(args.in_lca, args.out_lca, args.upto, args.mincount, formatted_exclude_tax, lca_file_type, args.dust_max, args.show_progress)
     write_shortened_bam(args.in_bam, args.out_lca, args.out_bam, args.stranded, args.minsim, args.annotate_pmd, shortlcalines, args.show_progress)
 
 
@@ -53,7 +53,7 @@ def parse_exclude_tax(args):
         return []
 
 
-def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_tax,lca_file_type,show_progress=False): 
+def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_tax,lca_file_type,dust_max=0,show_progress=False): 
 
     print("\nWriting a filtered lca file...")
 
@@ -117,7 +117,7 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_t
                     newreadname = line[:tab_split]
                 if newreadname == oldreadname:
                     print("Error: You have duplicate entries in your LCA file, for example " + newreadname + ". You should fix this and re-run bamdam. Here is a suggested fix: awk '!seen[$0]++' input_lca > deduplicated_lca")
-                    exit(-1)
+                    sys.exit(1)
                 if upto in line: 
                     entry = line.strip().split('\t')
                     if len(entry) > 1:  
@@ -136,14 +136,30 @@ def write_shortened_lca(original_lca_path,short_lca_path,upto,mincount,exclude_t
                             if level == upto:
                                 if number in goodnodes: # you only need to check the upto counts, as they will be higher than anything underneath them 
                                     if lca_file_type == "ngslca":
-                                        outfile.write(line)
+                                        if float(dust_max)>0:
+                                            # check if it passes the dust filter 
+                                            readseq = line[:tab_split].rsplit(':', 3)[-3] # or [1] would work, not sure which is safer
+                                            read_dust = utils.calculate_dust(readseq)
+                                            if read_dust < float(dust_max):
+                                                outfile.write(line)
+                                                total_short_lca_lines += 1
+                                        else:
+                                            outfile.write(line)
+                                            total_short_lca_lines += 1
                                     elif lca_file_type == "metadmg":
                                         # reformat the output lca as an ngslca file format no matter how it came in 
                                         firstentry = ":".join(entry[0:4])
                                         restentry = "\t".join(fields)
                                         fullentry = "\t".join([firstentry, restentry]).replace('"', '') + "\n"
-                                        outfile.write(fullentry)
-                                    total_short_lca_lines += 1
+                                        if float(dust_max)>0:
+                                            readseq =  entry[1] # this is using metadmg lca output style 
+                                            read_dust = utils.calculate_dust(readseq)
+                                            if read_dust < float(dust_max):
+                                                outfile.write(fullentry)
+                                                total_short_lca_lines += 1
+                                        else:
+                                            outfile.write(fullentry)
+                                            total_short_lca_lines += 1
                                     break
 
     print("Wrote a filtered lca file. \n")
@@ -266,6 +282,7 @@ def write_shortened_bam(
                 except StopIteration:
                     notdone = False
     if showing_progress and progress_bar:
+        progress_bar.update(totallcalines - lcaheaderlines - progress_bar.n)
         progress_bar.close()
 
     print("Wrote a filtered bam file. Done! \n") 

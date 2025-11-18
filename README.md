@@ -46,15 +46,15 @@ bamdam compute --in_bam A2.bam --in_lca A2.lca --out_tsv A_tsv.txt --out_subs A_
 
 ## <a name="description"></a>Description
 
-Bamdam is a post-mapping, post-least-common-ancestor toolkit for managing, authenticating and visualizing ancient environmental DNA capture or shotgun sequencing data, after reads have been mapped to a reference database and run through the least common ancestor algorithm [ngsLCA](https://github.com/miwipe/ngsLCA), for example at the end of the Holi pipeline. The input to bamdam is a read-sorted bam (also required by ngsLCA) and the text file output from ngsLCA. It works with both eukaryotic and microbial data.
+Bamdam is a post-mapping, post-lowest-common-ancestor toolkit for managing, authenticating and visualizing ancient environmental DNA capture or shotgun sequencing data, after reads have been mapped to a reference database and run through the lowest common ancestor algorithm [ngsLCA](https://github.com/miwipe/ngsLCA), for example at the end of the Holi pipeline. The input to bamdam is a read-sorted bam (also required by ngsLCA) and the .lca text file output from ngsLCA. It works with both eukaryotic and microbial data.
 
-The first two functions are bamdam **shrink** and bamdam **compute**. When mapping against large reference databases, the output bam files will often be huge and contain mostly irrelevant alignments; the reads with the most alignments are usually those assigned to uninformative taxonomic nodes (e.g. "Viridiplantae:kingdom"). The shrink command produces a much smaller bam (and associated lca file) which still contains all informative alignments. The compute command then takes in a (shrunken) bam and lca file and produces a large table in tsv format with one row per taxonomic node, including authentication metrics such as ancient DNA damage, k-mer duplicity and mean read complexity. All datasets are different, so users can then set their own filtering thresholds to decide which taxa look like real taxa rather than contaminants.
+The first two functions are bamdam **shrink** and bamdam **compute**. When mapping against large reference databases, the output bam files will often be huge and contain mostly irrelevant alignments, as the reads with the most alignments are usually those assigned to uninformative taxonomic nodes (e.g. "Viridiplantae:kingdom"). The shrink command produces a much smaller bam (and associated lca file) which still contains all informative alignments. The compute command then takes in a (shrunken) bam and lca file and produces a large table in tsv format with one row per taxonomic node, including authentication metrics such as ancient DNA damage, k-mer duplicity and mean read complexity. All datasets are different, so users can then set their own filtering thresholds to decide which taxa look like real taxa rather than contaminants.
 
-The rest of the functions operate on the output of bamdam **shrink** and **compute**. The **extract** command extracts reads assigned to a specific taxonomic node from a bam file into another bam file for downstream analyses, optionally detecting the top reference for that node. The **plotdamage** command uses the subs file(s), a secondary output from bamdam compute, to quickly produce a (multi-sample) postmortem damage "smiley" plot for a specified taxonomic node. The **plotbaminfo** command takes a bam file as input (e.g. from bamdam extract), and plots the mismatch and read length distributions. The **combine** command takes multiple tsv files to create a multi-sample abundance/damage/etc matrix. Lastly the **krona** command converts one or more (optionally pre-filtered) bamdam tsv files into XMLs which can be imported into [KronaTools](https://github.com/marbl/Krona) to make interactive Krona plots, in which each taxa is coloured by its 5' C-to-T frequency, and additional information such as duplicity and mean read length per taxa is embedded. [See an example here](https://bdesanctis.github.io/bamdam/example/microbe_krona.html)  (make sure to click "Color by Damage" on the left).
+The rest of the functions operate on the output of bamdam **shrink** and **compute**. The **extract** command extracts reads assigned to a specific taxonomic node from a bam file into another bam file for downstream analyses, optionally detecting the top reference for that node. The **plotdamage** command uses the subs file(s), a secondary output from bamdam compute, to quickly produce a (multi-sample) postmortem damage "smiley" plot for a specified taxonomic node. The **plotbaminfo** command takes a bam file as input (e.g. from bamdam extract), and plots the mismatch and read length distributions. The **combine** command takes multiple tsv files to create a multi-sample abundance/damage/etc matrix. Lastly the **krona** command converts one or more (optionally pre-filtered) bamdam tsv files into XMLs which can be imported into [KronaTools](https://github.com/marbl/Krona) to make interactive Krona plots, in which each taxa is coloured by its 5' C-to-T frequency, and additional information such as duplicity and mean read length per taxa is embedded. [See an example here](https://bdesanctis.github.io/bamdam/example/microbe_krona.html).
 
-Bamdam reads and writes bams line-by-line, so it shouldn't need too much RAM (usually <8GB). A 50GB shotgun sequencing bam file takes a few hours on my laptop, and this should scale roughly linearly, with higher runtimes expected for capture or highly informative data. 
+Bamdam reads and writes bams line-by-line, so it shouldn't need too much RAM (usually <8GB unless your input file is massive). A 50GB shotgun sequencing bam file takes a few hours on my laptop, and this should scale roughly linearly, with higher runtimes expected for capture or highly informative data. 
 
-We recommend running the [tutorial](#tutorial) first. Example data is provided.
+We highly recommend running the [tutorial](#tutorial) first. Example data is provided.
 
 ![bamdam workflow figure](docs/assets/workflowfigure.jpg "bamdam workflow")
 
@@ -71,7 +71,6 @@ usage: bamdam shrink [-h] --in_lca IN_LCA --in_bam IN_BAM --out_lca OUT_LCA --ou
 
 optional arguments:
   -h, --help            show this help message and exit
-  --threads THREADS     Number of CPU threads to use for BAM compression/decompression (default: 1)
   --in_lca IN_LCA       Path to the input LCA file (required)
   --in_bam IN_BAM       Path to the input (read-sorted) BAM file (required)
   --out_lca OUT_LCA     Path to the short output LCA file (required)
@@ -85,9 +84,11 @@ optional arguments:
   --exclude_tax_file EXCLUDE_TAX_FILE
                         File of numeric tax ID(s) to exclude when filtering, one per line (default: none)
   --annotate_pmd        Annotate output bam file with PMD tags (default: not set)
+  --dust_max DUST_MAX   Maximum DUST score threshold to keep a read (default: not set)
+  --show_progress       Print a progress bar (default: not set)
 ```
 
-Bamdam shrink will first subset your lca file to include only nodes which: ((are at or below the tax threshold) AND which meet the minimum read count), OR (are below a node which meets the former criteria), and only reads which meet the minimum similarity. You may optionally give it a list or file of numeric tax IDs, and all reads assigned to those nodes will be removed (e.g., taxa identified at some minimum threshold in your control samples). You can also filter the input lca file yourself beforehand, as long as the original order and format is preserved. For example, you may only be interested in eukaryotes, and so wish to do something like 
+Bamdam shrink will first subset your lca file to include only nodes which: ((are at or below the tax threshold) AND (which meet the minimum read count)), OR (are below a node which meets the former criteria), and only reads which meet the optional dust threshold. You may optionally give it a list or file of numeric tax IDs, and all reads assigned to those nodes will be removed (e.g., taxa identified at some minimum threshold in your control samples). You can also filter the input lca file yourself beforehand, as long as the original order and format is preserved. For example, you may only be interested in eukaryotes, and so wish to do something like 
 
 ```grep "Eukaryot" A.lca > A_onlyeukaryots.lca```
 
@@ -112,11 +113,11 @@ optional arguments:
   --out_subs OUT_SUBS   Path to the output subs file (required)
   --stranded STRANDED   Either ss for single stranded or ds for double stranded (required)
   --k K                 Value of k for per-node counts of unique k-mers and duplicity (default: 29)
-  --upto UPTO           Keep nodes up to and including this tax threshold (default: family)
-  --mode MODE           Mode to calculate stats. 1: use best alignment (recommended), 2: average over reads, 3:
-                        average over alignments (default: 1)
+  --upto UPTO           Keep nodes up to and including this tax threshold; use root to disable (default: family)
+  --mode MODE           Mode to calculate stats. 1: use best alignment (recommended), 2: average over reads, 3: average over alignments (default: 1)
   --plotdupdust PLOTDUPDUST
-                        Path to create a duplicity-dust plot for this sample (default: not set)
+                        Path to create a duplicity-dust plot, ending in .pdf or .png (default: not set)
+  --udg                 Split CpG and non CpG sites. Intended for UDG-treated library damage analysis. (default: not set)
   --show_progress       Print a progress bar (default: not set)
 ```
 
@@ -134,7 +135,7 @@ Full list of the output tsv columns:
 - **AvgReadGC**: Average GC content of the reads assigned to that node or underneath.
 - **AvgRefGC**: Average GC content of the reconstructed reference genomic intervals associated to reads assigned to that node or underneath. Depends on the mode.
 - **UniqueKmers**: The number of unique k-mers in the reads assigned to that node or underneath.
-- **RatioDupKmers**: Another way of thinking about duplicity: 1 minus the ratio of unique k-mers divided by the number of total k-mers. Should be close to 0 (equivalent to no duplicated k-mers) unless coverage is high or breadth of coverage is uneven.
+- **UniqKmersPerRead**: The number of unique k-mers in the reads assinged to that node or underneath, divided by the number of reads assigned to that node or underneath. Depends on read lengths.
 - **TotalAlignments**: Sum of the number of alignments for all the reads assigned to that node or underneath.
 - **UnaggregatedReads**: The number of reads assigned to exactly that node, not including any of those reads assigned to nodes underneath.
 - **taxpath**: The full taxonomic path from the lca file.
@@ -152,7 +153,7 @@ Takes in multiple tsv files from the output of bamdam compute, and combines them
 ```
 usage: bamdam combine [-h] (--in_tsv IN_TSV [IN_TSV ...] | --in_tsv_list IN_TSV_LIST) [--out_tsv OUT_TSV]
                       [--minreads MINREADS]
-                      [--include [{Duplicity,MeanDust,Damage+1,Damage-1,MeanLength,ANI,AvgReadGC,AvgRefGC,UniqueKmers,RatioDupKmers,TotalAlignments,UnaggregatedReads} ...]]
+                      [--include [{Duplicity,MeanDust,Damage+1,Damage-1,MeanLength,ANI,AvgReadGC,AvgRefGC,UniqueKmers,UniqKmersPerRead,TotalAlignments,UnaggregatedReads} ...]]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -161,11 +162,10 @@ optional arguments:
   --in_tsv_list IN_TSV_LIST
                         Path to a text file containing paths to input tsv files, one per line
   --out_tsv OUT_TSV     Path to output tsv file name (default: combined.tsv)
-  --minreads MINREADS   Minimum reads across samples to include taxa (default: 50)
-  --include [{Duplicity,MeanDust,Damage+1,Damage-1,MeanLength,ANI,AvgReadGC,AvgRefGC,UniqueKmers,RatioDupKmers,TotalAlignments,UnaggregatedReads} ...]
-                        Metrics to include in output file. Specify any combination of bamdam compute output tsv
-                        columns, 'all', or 'none'. TaxNodeID, TaxName, TotalReads and taxpath are always
-                        included. (default: none)
+  --minreads MINREADS   Minimum reads across samples to include a taxon (default: 50)
+  --include [{all,Duplicity,MeanDust,Damage+1,Damage-1,Damage+1_CpG,Damage+1_nonCpG,MeanLength,ANI,AvgReadGC,AvgRefGC,UniqueKmers,UniqKmersPerRead,TotalAlignments,UnaggregatedReads,none} ...]
+                        Extra metrics to include in output file. Specify any combination of columns in your bamdam compute output files. TaxNodeID,
+                        TaxName, TotalReads, Duplicity, MeanDust, Damage+1 and taxpath are always included. (default: none)
 ```
 
 ### <a name="extract"></a>bamdam extract
@@ -176,14 +176,14 @@ Extracts from a bam file (a) reads which have been assigned to a subset of taxon
 usage: bamdam extract [-h] --in_bam IN_BAM --in_lca IN_LCA --out_bam OUT_BAM [--tax TAX [TAX ...]] [--tax_file TAX_FILE] [--only_top_ref]
 
 optional arguments:
-  -h, --help              show this help message and exit
-  --in_bam IN_BAM         Path to the BAM file (required)
-  --in_lca IN_LCA         Path to the LCA file (required)
-  --out_bam OUT_BAM       Path to the filtered BAM file (required)
-  --tax TAX [TAX ...]     Numeric tax ID(s) to extract (default: none)
-  --tax_file TAX_FILE     File of numeric tax ID(s) to extract, one per line (default: none)
-  --only_top_ref          Only keep alignments to the most-hit reference (default: not set)
-  --only_top_alignment    Only output the best alignment for each read. If there are multiple best alignments, randomly picks one (default: not set)
+  -h, --help            show this help message and exit
+  --in_bam IN_BAM       Path to the BAM file (required)
+  --in_lca IN_LCA       Path to the LCA file
+  --out_bam OUT_BAM     Path to the output BAM file
+  --tax TAX [TAX ...]   Numeric tax ID(s) to extract (default: none)
+  --tax_file TAX_FILE   File of numeric tax ID(s) to extract, one per line (default: none)
+  --only_top_ref        Only keep alignments to the most-hit reference (default: not set)
+  --only_top_alignment  Only output the best alignment for each read. If there are multiple best alignments, randomly picks one (default: not set)
 ```
 
 The best alignment is chosen by alignment score (AS tag), which is still meaningful after merging bams mapped to more than one reference (whereas mapping quality is not). Unless you choose only_top_alignment, bamdam extract output will still contain multiple alignments per read. If you specify both --only_top_ref and --only_top_alignment, you will get for each read the best alignment to that reference, not necessarily the best alignment overall. The top reference sequence is chosen by total number of alignments. 
@@ -204,6 +204,7 @@ optional arguments:
   --tax TAX             Taxonomic node ID (required)
   --outplot OUTPLOT     Filename for the output plot, ending in .png or .pdf (default: damage_plot.png)
   --ymax YMAX           Maximum for y axis (optional)
+  --udg                 Plot CpG and non-CpG lines separately. Requires a subs file(s) that was made with the udg flag. (default: not set)
 ```
 
 Example output for multiple input files:
@@ -248,13 +249,12 @@ optional arguments:
   --out_xml OUT_XML           Path to output xml file name (default: out.xml)
   --minreads MINREADS         Minimum reads across samples to include taxa (default: 100)
   --aggregate_to AGGREGATE_TO The deepest internal taxonomic level to show in the krona plots. Will aggregate if this level is deeper than the taxonomic level the input tsv goes up to.    (default: kingdom)
-  --maxdamage MAXDAMAGE
-                              Force a maximum value for the 5' C-to-T damage color scale. If not provided, the maximum value is determined from the data, with a minimum threshold of 0.3. (not recommended by default)
+  --maxdamage MAXDAMAGE       Force a maximum value for the 5' C-to-T damage color scale. If not provided, the maximum value is determined from the data, with a minimum threshold of 0.3. (not recommended by default)
 ```
 
 Since you probably shrunk your bam files to only contain reads up to some taxonomic level (e.g. family) with bamdam shrink, but it can be nice to group taxa by deeper groups for visualization purposes, bamdam krona will aggregate information back up the taxonomy. This means that, if you ran bamdam compute with --upto family and then bamdam krona with --aggregate_to kingdom (the default behavior), you will see information for all the in-between taxonomic levels (e.g. order, class, phylum) in your Krona plots, which has been obtained by summing reads and taking read-weighted averages of damage, duplicity, etc. 
 
- [See an example output here](https://bdesanctis.github.io/bamdam/example/microbe_krona.html)  (make sure to click "Color by Damage" on the left). 
+[See an example output here](https://bdesanctis.github.io/bamdam/example/microbe_krona.html). 
 
 Note: There appears to be an occasional Krona bug that incorrectly labels the numerical labels on the ticks of the colour bar in the bottom left, but this does not seem to affect colours in the figure itself. 
 
@@ -282,7 +282,7 @@ Though the duplicity looks fine, for a further sanity check we can look directly
 ```
 bamdam extract --in_bam CGG3.small.bam --in_lca CGG3.small.lca --out_bam CGG3.Myrtoideae.bam --tax 1699513 --only_top_alignment --only_top_ref
 ```
-The command-line output also tells you the most common reference genome, NW_026607485.1. You can download it and use samtools for a quick coverage plot in the command line. You could continue downstream analyses from here.
+The command-line output also tells you the most common reference sequence, NW_026607485.1. You can download it and use samtools for a quick coverage plot in the command line. You could continue downstream analyses from here.
 ```
 wget "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=nucleotide&id=NW_026607485.1&rettype=fasta&retmode=text" -O NW_026607485.1.fasta
 samtools sort -o CGG3.Myrtoideae.sort.bam CGG3.Myrtoideae.bam
@@ -295,18 +295,19 @@ wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/microbesample2.tsv
 wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/microbesample3.tsv
 wget https://sid.erda.dk/share_redirect/CN4BpEwyRr/microbecontrol.tsv
 ```
-We can combine multiple files into a single matrix. By default this will include the tax name, total reads, read-weighted mean damage, and per-sample per-taxa damage, duplicity and dust. 
+We can combine multiple files into a single matrix. By default this will include the tax name, total reads, 5' damage, duplicity and dust. 
 ```
 ls microbe*tsv > input_list.txt
 bamdam combine --in_tsv_list input_list.txt --out_tsv combined_microbes.tsv
 head combined_microbes.tsv
 ```
-Lastly we create a set of interactive, damage-coloured Krona plots by converting a set of tsv files into a single XML file with bamdam, then importing that file into a KronaTools function which converts XML to html. Bamdam will also generate a summary plot as the first plot in the output. The latter command requires having [KronaTools](https://github.com/marbl/Krona) installed. 
+Lastly we can create a set of interactive, damage-coloured Krona plots by converting a set of tsv files into a single XML file with bamdam, then importing that file into a KronaTools function which converts XML to html. Bamdam will also generate a summary plot as the first plot in the output. The ktImportXML command requires having [KronaTools](https://github.com/marbl/Krona) installed. The last perl command is optional, and simply replaces a line in the html file so that 'Color by Damage' is turned on by default. If you don't do this, you will just have to click the 'Color by Damage' box every time you open the file (ktImportXML won't let you change the default colouring).
 ```
 bamdam krona --in_tsv_list input_list.txt --out_xml microbes.xml
 ktImportXML -o microbes.html microbes.xml
+perl -i -pe 's/useHueCheckBox\.checked = hueDefault;/useHueCheckBox.checked = true;/' microbes.html
 ```
-Once you get the html file, you can open it in any web browser. Make sure to click "Colour by damage" in the bottom left.
+Once you get the html file, you can open it in any web browser.
 
 ## <a name="contributing"></a>Contributing
 Contributions are welcome and appreciated. 

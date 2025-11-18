@@ -28,63 +28,10 @@ def run_compute(args):
     if(lca_file_type == "metadmg"):
         print("Error: It looks like you're trying to run bamdam compute with a metaDMG-style lca file. Please use an ngsLCA-style lca file. Bamdam shrink can automatically convert it for you.")
         sys.exit()
-    nodedata, pmds_in_bam = gather_subs_and_kmers(args.in_bam, args.in_lca, kn=args.k, upto=args.upto, mode=args.mode, stranded=args.stranded, show_progress=args.show_progress)
-    parse_and_write_node_data(nodedata, args.out_tsv, args.out_subs, args.stranded, pmds_in_bam, args.mode) 
+    nodedata, pmds_in_bam = gather_subs_and_kmers(args.in_bam, args.in_lca, kn=args.k, upto=args.upto, mode=args.mode, stranded=args.stranded, show_progress=args.show_progress, cpg_split=args.udg)
+    parse_and_write_node_data(nodedata, args.out_tsv, args.out_subs, args.stranded, pmds_in_bam, args.mode, cpg_split=args.udg) 
     if args.plotdupdust:
         plotdupdust(args.out_tsv, args.plotdupdust) 
-
-
-def calculate_dust(seq):
-    # parameters as given by sga and original publication: Morgulis A. "A fast and symmetric DUST implementation to Mask Low-Complexity DNA Sequences". J Comp Bio.
-    # between 0 and 100 inclusive; throws a -1 if the read has an N in it
-    
-    readlength = len(seq)
-    if readlength < 3:
-        print(f"Warning: Cannot calculate dust score for a very short sequence (wait, why do you have reads this short?)")
-        return 0
-    
-    w = 64
-    k = 3
-    firstwindowend = min(readlength,w)
-    l = firstwindowend - 2
-    maxpossibledust = l*(l-1)/2
-
-    kmer_counts = {}
-    for i in range(firstwindowend - k + 1):
-        kmer = seq[i:i + k]
-        if not all(base in {'A', 'C', 'T', 'G'} for base in kmer):
-            # print(f"Warning: Skipping DUST calculations for a read with non-ACGT characters.")
-            return -1
-        if kmer in kmer_counts:
-            kmer_counts[kmer] += 1
-        else:
-            kmer_counts[kmer] = 1
-    currentdust = sum((count * (count - 1)) / 2 for count in kmer_counts.values()) 
-
-    if firstwindowend == readlength:
-        #  read is less than window size
-        return currentdust * (100 / maxpossibledust) 
-
-    # otherwise perform sliding window :
-    maxdust = currentdust
-    for i in range(1, readlength - w +1):
-        oldkmer = seq[(i-1) : (i+2)]
-        newkmer = seq[(i+w-3): (i+w)]
-        if not all(base in {'A', 'C', 'T', 'G'} for base in newkmer):
-            # print(f"Warning: Skipping DUST calculations for a read with non-ACGT characters.")
-            return -1
-        kmer_counts[oldkmer] += -1
-        if kmer_counts[oldkmer] == 0:
-            del kmer_counts[oldkmer]
-        if newkmer not in kmer_counts:
-            kmer_counts[newkmer] = 1
-        else:
-            kmer_counts[newkmer] += 1
-        currentdust = sum((count * (count - 1)) / 2 for count in kmer_counts.values())
-        if currentdust > maxdust:
-            maxdust = currentdust
-
-    return maxdust * 100 / (maxpossibledust) #  standardize so it's max 100 
 
 def get_hll_info(seq,k):
     # output to dump into hll objects
@@ -103,7 +50,7 @@ def get_hll_info(seq,k):
         print(f"Warning: One of your reads is shorter than k.")
     return rep_kmers, total_kmers
 
-def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto, mode, stranded, show_progress = False):
+def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto, mode, stranded, show_progress = False, cpg_split = False):
     print("\nGathering substitution and kmer metrics per node...")
     # this function is organized in a potentially unintuitive way. it uses a bunch of nested loops to pop between the bam and lca files line by line. 
     # it matches up bam read names and lca read names and aggregates some things per alignment, some per read, and some per node, the last of which are added into a large structure node_data.
@@ -173,7 +120,7 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto, mode, stranded, 
                     best_alignment = best_alignments[0]
                 else:
                     print("Error: unexpected behavior. Can't find a best alignment for this read.")
-                    exit(-1)
+                    sys.exit(1)
                 seq = best_alignment.query_sequence
                 readlength = len(seq)
                 cigar = best_alignment.cigarstring
@@ -199,10 +146,33 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto, mode, stranded, 
                         currentsubdict[key] +=1
                     else:
                         currentsubdict[key] = 1
-            # other modes will already have that info stored, as it was being tracked over all alignments as we ran through them
+                # other modes will already have that info stored, as it was being tracked over all alignments as we ran through them
+                # okay. now add CpG-annotated entries if flag is set
+                if cpg_split:
+                    # this is kind of a slow way to do this particular thing but whatever
+                    for sub in allsubs:
+                        from_base, to_base, pos = sub
+                        if from_base == 'C':
+                            next_pos_exists = False
+                            is_cpg = False
+                            for other_sub in allsubs:
+                                if other_sub[2] == pos + 1:
+                                    next_pos_exists = True
+                                    if other_sub[0] == 'G':
+                                        is_cpg = True
+                                    break
+                            if next_pos_exists:
+                                if is_cpg:
+                                    cpg_key = ('CpG', to_base, pos)
+                                else:
+                                    cpg_key = ('nonCpG', to_base, pos)
+                                if cpg_key in currentsubdict:
+                                    currentsubdict[cpg_key] += 1
+                                else:
+                                    currentsubdict[cpg_key] = 1 
 
             # do k-mer things for this read
-            dust = calculate_dust(seq)
+            dust = utils.calculate_dust(seq)
             # then get all the rep kmers to dump into the hyperloglog for each relevant node below
             rep_kmers, total_kmers = get_hll_info(seq,kn)
 
@@ -359,10 +329,15 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto, mode, stranded, 
 
         # now for the current alignment.
         # the following might change for different alignments of the same read: 
-        alignment_score = alignment.get_tag("AS")
         num_alignments += 1 
 
         if mode == 1:
+            try:
+                alignment_score = alignment.get_tag("AS")
+            except KeyError:
+                print("Error: There are not AS (alignment score) tags in your bam file. Bowtie2 produces them by default, but other aligners might not. These tags are needed to determine the best alignment in compute mode 1. You can either run a different compute mode (we suggest mode 2), or annotate your bam and try mode 1 again.")
+                sys.exit(1)
+
             # much less computing needed, hold it all off until the end when we know the best alignment
             if best_alignments == []:
                 # nothing tracked yet, initialize
@@ -408,6 +383,28 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto, mode, stranded, 
                     currentsubdict[key] +=1
                 else:
                     currentsubdict[key] = 1
+            # add CpG-annotated entries if flag is set
+            if cpg_split:
+                for sub in allsubs:
+                    from_base, to_base, pos = sub
+                    if from_base == 'C':
+                        next_pos_exists = False
+                        is_cpg = False
+                        for other_sub in allsubs:
+                            if other_sub[2] == pos + 1:
+                                next_pos_exists = True
+                                if other_sub[0] == 'G':
+                                    is_cpg = True
+                                break
+                        if next_pos_exists:
+                            if is_cpg:
+                                cpg_key = ('CpG', to_base, pos)
+                            else:
+                                cpg_key = ('nonCpG', to_base, pos)
+                            if cpg_key in currentsubdict:
+                                currentsubdict[cpg_key] += 1
+                            else:
+                                currentsubdict[cpg_key] = 1
 
         # quick catch for the starting read; check if the first read (and then presumably the whole bam) has a pmd score 
         if oldreadname == "":
@@ -418,13 +415,14 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto, mode, stranded, 
                 are_pmds_in_the_bam = False
 
     if progress_bar:
+        progress_bar.update(totallcalines - lcaheaderlines - progress_bar.n)
         progress_bar.close()
 
     bamfile.close() 
     lcafile.close()
 
     if lcalinesskipped > 0:
-        print("\nWarning: " + str(lcalinesskipped) + " reads in the input LCA file did not appear in the input bam file and so were not used. This may have happened if the minimum similarity used in bamdam shrink did not match that used in ngsLCA. This will not affect output statistics, except that these reads will not be included.")
+        print("\nWarning: " + str(lcalinesskipped) + " reads in the input LCA file did not appear in the input bam file and so were not used. This may have happened if the minimum similarity used in bamdam shrink was more stringent than that used in ngsLCA. This will not affect output statistics, except that these reads will not be included.")
         
     if readswithNs >0 :
         print("\nSkipped k-mer counting and DUST score computation for " + str(readswithNs) + " reads with non-ACGT characters. \n" +
@@ -434,7 +432,7 @@ def gather_subs_and_kmers(bamfile_path, lcafile_path, kn, upto, mode, stranded, 
 
     return node_data, are_pmds_in_the_bam
 
-def format_subs(subs, nreads):
+def format_subs(subs, nreads, cpg_split):
     formatted_subs = []
     
     for key, value in subs.items():
@@ -446,15 +444,22 @@ def format_subs(subs, nreads):
             formatted_key = "".join(parts)
             formatted_value = round(value / nreads, 3)  
             formatted_subs.append((pos, f"{formatted_key}:{formatted_value}"))
-            formatted_subs.sort(key=lambda x: (x[0] > 0, (x[0])))
+        if cpg_split:
+            # don't forget about the cpg ones, if you need those. 
+            is_cpg_entry = parts[0] in {'CpG', 'nonCpG'}
+            if (-15 <= pos <= 15) and is_cpg_entry and (parts[1] in {'A', 'C', 'T', 'G'}):
+                formatted_key = "".join(parts)
+                formatted_value = round(value / nreads, 3)  
+                formatted_subs.append((pos, f"{formatted_key}:{formatted_value}"))
+
+    formatted_subs.sort(key=lambda x: (x[0] > 0, (x[0])))
 
     return " ".join(sub[1] for sub in formatted_subs)
 
 
 
 
-def calculate_node_damage(subs, stranded):
-    # also in here calculate the avg gc content of the reference
+def calculate_node_damage(subs, stranded, cpg_split):
 
     ctp1 = 0  # C>T at 5' position 1
     ctm1 = 0  # C>T at 3' position -1 for ss
@@ -462,8 +467,12 @@ def calculate_node_damage(subs, stranded):
     c_p1 = 0  # total C at 5' position 1
     c_m1 = 0  # total C at 3' position -1 for ss
     g_m1 = 0  # total G at 3' position -1 for ds
-    total_gc = 0 # gc content in ref 
-    total_bases = 0
+
+    if cpg_split:
+        cpg_ctp1 = 0
+        cpg_c_p1 = 0
+        noncpg_ctp1 = 0
+        noncpg_c_p1 = 0
 
     for key, count in subs.items():
         from_base, to_base, pos = str(key[0]), str(key[1]), int(key[2])
@@ -488,28 +497,53 @@ def calculate_node_damage(subs, stranded):
                 gam1 += count  # G>A at position -1
             g_m1 += count  # all Gs at position -1
 
-        # calculate total GC content on the reference
-        if from_base == 'C' or from_base == 'G':
-            total_gc += count  
+        # cpg-specific damage calculation (5' only), ds vs ss doesn't matter
+        # note 3' is not splittable because we don't know if a G comes after a C on the 3'
+        # we could print -2 instead of the 3' -1, which is what pmdtools does, but i don't think it's so informative
+        # so i will just add the split 5' c-to-t for udg mode
+        if cpg_split:
+            if from_base == 'CpG' and pos == 1:
+                if to_base == 'T':
+                    cpg_ctp1 += count
+                cpg_c_p1 += count
+            
+            if from_base == 'nonCpG' and pos == 1:
+                if to_base == 'T':
+                    noncpg_ctp1 += count
+                noncpg_c_p1 += count
 
-        total_bases += count  
 
     dp1 = ctp1 / c_p1 if c_p1 > 0 else 0
     dm1 = (ctm1 / c_m1 if c_m1 > 0 else 0) if stranded == "ss" else (gam1 / g_m1 if g_m1 > 0 else 0)
 
-    return dp1, dm1
-
-def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_bam, mode):
+    if cpg_split:
+        cpg_dp1 = cpg_ctp1 / cpg_c_p1 if cpg_c_p1 > 0 else 0
+        noncpg_dp1 = noncpg_ctp1 / noncpg_c_p1 if noncpg_c_p1 > 0 else 0
+        return dp1, dm1, cpg_dp1, noncpg_dp1
+    else:
+        return dp1, dm1
+def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_bam, mode, cpg_split = False):
     # parses a dictionary where keys are node tax ids, and entries are total_reads, meanlength, total_alignments, etc 
-
+    
     statsfile = open(tsv_path, 'w', newline='')
     subsfile = open(subs_path, 'w', newline='')
+    
     if pmds_in_bam:
-        header = ['TaxNodeID', 'TaxName', 'TotalReads','Duplicity', 'MeanDust','Damage+1', 'Damage-1','MeanLength', 'ANI','AvgReadGC','AvgRefGC',
-            'UniqueKmers', 'RatioDupKmers', 'TotalAlignments', 'UnaggregatedReads', 'PMDsover2', 'PMDSover4','taxpath'] 
+        if cpg_split:
+            header = ['TaxNodeID', 'TaxName', 'TotalReads','Duplicity', 'MeanDust','Damage+1', 'Damage-1', 'Damage+1_CpG', 'Damage+1_nonCpG',
+                'MeanLength', 'ANI','AvgReadGC','AvgRefGC', 'UniqueKmers', 'UniqKmersPerRead', 'TotalAlignments', 'UnaggregatedReads', 
+                'PMDsover2', 'PMDSover4','taxpath']
+        else:
+            header = ['TaxNodeID', 'TaxName', 'TotalReads','Duplicity', 'MeanDust','Damage+1', 'Damage-1','MeanLength', 'ANI','AvgReadGC','AvgRefGC',
+                'UniqueKmers', 'UniqKmersPerRead', 'TotalAlignments', 'UnaggregatedReads', 'PMDsover2', 'PMDSover4','taxpath']
     else:
-        header = ['TaxNodeID', 'TaxName', 'TotalReads','Duplicity', 'MeanDust','Damage+1', 'Damage-1','MeanLength', 'ANI','AvgReadGC','AvgRefGC',
-            'UniqueKmers', 'RatioDupKmers', 'TotalAlignments', 'UnaggregatedReads', 'taxpath']
+        if cpg_split:
+            header = ['TaxNodeID', 'TaxName', 'TotalReads','Duplicity', 'MeanDust','Damage+1', 'Damage-1', 'Damage+1_CpG', 'Damage+1_nonCpG',
+                'MeanLength', 'ANI','AvgReadGC','AvgRefGC', 'UniqueKmers', 'UniqKmersPerRead', 'TotalAlignments', 'UnaggregatedReads', 'taxpath']
+        else:
+            header = ['TaxNodeID', 'TaxName', 'TotalReads','Duplicity', 'MeanDust','Damage+1', 'Damage-1','MeanLength', 'ANI','AvgReadGC','AvgRefGC',
+                'UniqueKmers', 'UniqKmersPerRead', 'TotalAlignments', 'UnaggregatedReads', 'taxpath']
+    
     statsfile.write("\t".join(header) + "\n")
     writer = csv.writer(
         statsfile,
@@ -537,30 +571,38 @@ def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_b
             # if mode is 1, then subs is based off only the top alignment(s)
             # if mode is 2, then subs is already averaged over all alignments for each read
             # in both cases, you now want to weight it by total_reads
-            fsubs = format_subs(tn['subs'], tn['total_reads'])
+            fsubs = format_subs(tn['subs'], tn['total_reads'],cpg_split)
         if mode == 3:
             # if mode is 3, then subs is currently summed over all alignments 
-            fsubs = format_subs(tn['subs'], tn['total_alignments'])
+            fsubs = format_subs(tn['subs'], tn['total_alignments'],cpg_split)
 
         # number of unique k-mers approximated by the hyperloglog algorithm 
         numuniquekmers = len(tn['hll'])
         if numuniquekmers > 0:
             duplicity = tn['totalkmers'] / numuniquekmers
-            ratiodup = (tn['totalkmers'] - numuniquekmers) / tn['totalkmers']
+            uniquekmersperread = numuniquekmers / tn['total_reads']     
+            # it used to be the below (ratio duplicated kmers):  
+            #  (tn['totalkmers'] - numuniquekmers) / tn['totalkmers']
+            # but a reviewer requested we instead do UniqKmersPerRead, so that's what it is now
+            # in any case you can get all of this from the existing output in whatever ratio you'd like.
         else:
             duplicity = 0
-            ratiodup = 0
-        if ratiodup < 0 :
+            uniquekmersperread = 0
+        if uniquekmersperread < 0 :
             # you can get tiny negative numbers from essentially zero duplicity and error 
             # (there is up to 1% error in the uniq kmer counting)
-            ratiodup = 0
+            uniquekmersperread = 0
 
         taxname = tn['tax_path'].split(";")[0].split(":")[1]
 
         # only now calculate damage per node from the subs dict (see output subs file)
         # do not use formatted subs ; these should be raw numbers: how many READS for this taxa have these matches/mismatches?
         # (possibly this is avg'd over all the alignments per read, so maybe not an integer) 
-        dp1, dm1  = calculate_node_damage(tn['subs'], stranded)
+        # dp1, dm1  = calculate_node_damage(tn['subs'], stranded, cpg_split)
+        if cpg_split:
+            dp1, dm1, cpg_dp1, noncpg_dp1 = calculate_node_damage(tn['subs'], stranded, cpg_split)
+        else:
+            dp1, dm1 = calculate_node_damage(tn['subs'], stranded, cpg_split)
 
         # write , number of columns depends on if you wanted pmds or not
         if pmds_in_bam:
@@ -570,17 +612,30 @@ def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_b
             if mode == 3:
                 pd2 = tn['pmdsover2'] / tn['total_alignments']
                 pd4 = tn['pmdsover4'] / tn['total_alignments']
-            row = [int(node), taxname, tn['total_reads'], round(duplicity, 3), round(tn['avgdust'], 2), 
-                round(dp1, 4), round(dm1, 4), 
-                round(tn['meanlength'], 2),  round(tn['ani'], 4), round(tn['avgreadgc'], 3),round(tn['avgrefgc'], 3), numuniquekmers, round(ratiodup,3),tn['total_alignments'],
-                round(pd2, 3), round(pd4, 3), tn['unaggregatedreads'], tn['tax_path']]
+            if cpg_split:
+                row = [int(node), taxname, tn['total_reads'], round(duplicity, 3), round(tn['avgdust'], 2), 
+                    round(dp1, 4), round(dm1, 4), round(cpg_dp1, 4), round(noncpg_dp1, 4),
+                    round(tn['meanlength'], 2), round(tn['ani'], 4), round(tn['avgreadgc'], 3), round(tn['avgrefgc'], 3), 
+                    numuniquekmers, round(uniquekmersperread, 3), tn['total_alignments'],
+                    round(pd2, 3), round(pd4, 3), tn['unaggregatedreads'], tn['tax_path']]
+            else:
+                row = [int(node), taxname, tn['total_reads'], round(duplicity, 3), round(tn['avgdust'], 2), 
+                    round(dp1, 4), round(dm1, 4), 
+                    round(tn['meanlength'], 2),  round(tn['ani'], 4), round(tn['avgreadgc'], 3),round(tn['avgrefgc'], 3), numuniquekmers, round(uniquekmersperread,3),tn['total_alignments'],
+                    round(pd2, 3), round(pd4, 3), tn['unaggregatedreads'], tn['tax_path']]
         else:
-            row = [int(node), taxname, tn['total_reads'], round(duplicity, 2), round(tn['avgdust'], 2), 
-                round(dp1, 4), round(dm1, 4), 
-                round(tn['meanlength'], 2),  round(tn['ani'], 4), round(tn['avgreadgc'], 3),round(tn['avgrefgc'], 3),
-                numuniquekmers, round(ratiodup,3), tn['total_alignments'], tn['unaggregatedreads'], tn['tax_path']]
+            if cpg_split:
+                row = [int(node), taxname, tn['total_reads'], round(duplicity, 2), round(tn['avgdust'], 2), 
+                    round(dp1, 4), round(dm1, 4), round(cpg_dp1, 4), round(noncpg_dp1, 4),
+                    round(tn['meanlength'], 2), round(tn['ani'], 4), round(tn['avgreadgc'], 3), round(tn['avgrefgc'], 3),
+                    numuniquekmers, round(uniquekmersperread, 3), tn['total_alignments'], tn['unaggregatedreads'], tn['tax_path']]
+            else:
+                row = [int(node), taxname, tn['total_reads'], round(duplicity, 2), round(tn['avgdust'], 2), 
+                    round(dp1, 4), round(dm1, 4), 
+                    round(tn['meanlength'], 2), round(tn['ani'], 4), round(tn['avgreadgc'], 3), round(tn['avgrefgc'], 3),
+                    numuniquekmers, round(uniquekmersperread, 3), tn['total_alignments'], tn['unaggregatedreads'], tn['tax_path']]
+        
         rows.append(row)
-
         subsrows[int(node)] = [int(node), taxname, fsubs]
     
     rows.sort(key=lambda x: x[2], reverse=True)
@@ -597,8 +652,8 @@ def parse_and_write_node_data(nodedata, tsv_path, subs_path, stranded, pmds_in_b
     print("Wrote final tsv and subs files. Done!")
     
 
-def plotdupdust(tsv_path, plot_path):
 
+def plotdupdust(tsv_path, plot_path):
     # makes an optional duplicity-dust plot at the genus level. by reviewer request after we put something similar in the manuscript.
     
     if not matplotlib_imported:
@@ -611,17 +666,30 @@ def plotdupdust(tsv_path, plot_path):
     damages = []
 
     with open(tsv_path, 'r') as f:
-        next(f)  # skip header
+        header = next(f).strip().split('\t')
+        
+        # find column indices
+        try:
+            duplicity_idx = header.index('Duplicity')
+            dust_idx = header.index('MeanDust')
+            damage_idx = header.index('Damage+1')
+            reads_idx = header.index('TotalReads')
+            taxpath_idx = header.index('taxpath')
+        except ValueError as e:
+            print(f"Error: Could not find required column in header: {e}")
+            return
+        
         for line in f:
             cols = line.split('\t')
-            if len(cols) < 6:
+            if len(cols) <= max(duplicity_idx, dust_idx, damage_idx, reads_idx, taxpath_idx):
                 continue
-            taxpath = cols[14]
-            reads = int(cols[2])
-            duplicity = float(cols[3])
-            dust = float(cols[4])
-            damage = float(cols[5])
-
+            
+            taxpath = cols[taxpath_idx]
+            reads = int(cols[reads_idx])
+            duplicity = float(cols[duplicity_idx])
+            dust = float(cols[dust_idx])
+            damage = float(cols[damage_idx])
+            
             if 'genus' in taxpath and 'species' not in taxpath and 'subgenus' not in taxpath and reads > 50:
                 genera.append(taxpath)
                 duplicities.append(duplicity)
@@ -629,7 +697,7 @@ def plotdupdust(tsv_path, plot_path):
                 damages.append(damage)
     
     if not duplicities or not dusts:
-        print("No data matching criteria.")
+        print("No data matching criteria (genus level with >50 reads).")
         return
 
     # calculate limits with 5% padding
@@ -650,8 +718,14 @@ def plotdupdust(tsv_path, plot_path):
     plt.ylim(dup_min - 0.05 * dup_range, dup_max + 0.05 * dup_range)
 
     plt.tight_layout()
-    plt.savefig(plot_path)
+    
+    file_extension = os.path.splitext(plot_path)[1].lower()
+    if file_extension == '.pdf':
+        plt.savefig(plot_path, format='pdf')
+    else:
+        if file_extension != '.png':
+            print("Warning: Invalid plot file suffix. Your plot file is being saved in png format with the filename you requested.")
+        plt.savefig(plot_path)
+    
     plt.close()
-
-
 

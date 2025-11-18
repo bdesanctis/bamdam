@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 
 # bamdam by Bianca De Sanctis, bddesanctis@gmail.com  
-# last updated july 2 2025
+# last updated nov 17 2025
+# MIT license
 
 import sys 
 import re
@@ -53,6 +54,7 @@ def main():
     parser_shrink.add_argument("--exclude_tax", type=str, nargs='+', default=[], help="Numeric tax ID(s) to exclude when filtering (default: none)")
     parser_shrink.add_argument("--exclude_tax_file", type=str, default=None, help="File of numeric tax ID(s) to exclude when filtering, one per line (default: none)")
     parser_shrink.add_argument("--annotate_pmd", action='store_true', help="Annotate output bam file with PMD tags (default: not set)")
+    parser_shrink.add_argument("--dust_max", type=str, default="0", help="Maximum DUST score threshold to keep a read (default: not set)")
     parser_shrink.add_argument("--show_progress", action='store_true', help="Print a progress bar (default: not set)")
     parser_shrink.set_defaults(func=shrink.run_shrink) 
 
@@ -66,7 +68,8 @@ def main():
     parser_compute.add_argument("--k", type=int, default=29, help="Value of k for per-node counts of unique k-mers and duplicity (default: 29)")
     parser_compute.add_argument("--upto", type=str, default="family", help="Keep nodes up to and including this tax threshold; use root to disable (default: family)")
     parser_compute.add_argument("--mode", type=int, default=1, help="Mode to calculate stats. 1: use best alignment (recommended), 2: average over reads, 3: average over alignments (default: 1)")
-    parser_compute.add_argument("--plotdupdust", type=str, help="Path to create a duplicity-dust plot for this sample (default: not set)")
+    parser_compute.add_argument("--plotdupdust", type=str, help="Path to create a duplicity-dust plot, ending in .pdf or .png. (default: not set)")
+    parser_compute.add_argument("--udg", action='store_true', help="Split CpG and non CpG sites. Intended for UDG-treated library damage analysis. (default: not set)")
     parser_compute.add_argument("--show_progress", action='store_true', help="Print a progress bar (default: not set)")
     parser_compute.set_defaults(func=compute.run_compute)
 
@@ -89,6 +92,8 @@ def main():
     parser_plotdamage.add_argument("--tax", type=str, required=True, help="Taxonomic node ID (required)")
     parser_plotdamage.add_argument("--outplot", type=str, default="damage_plot.png", help="Filename for the output plot, ending in .png or .pdf (default: damage_plot.png)")
     parser_plotdamage.add_argument("--ymax", type=str, default="0", help="Maximum for y axis (optional)")
+    # to do... parser_plotdamage.add_argument("--separate", action='store_true', help="Plot a line for every substitution type separately, instead of grouping into C-to-T, G-to-A and other (default: not set)")
+    parser_plotdamage.add_argument("--udg", action='store_true', help="Plot CpG and non-CpG lines separately. Requires a subs file(s) that was made with the udg flag. (default: not set)")
     parser_plotdamage.set_defaults(func=plotdamage.run_plotdamage)
 
     # Plot bam info
@@ -106,13 +111,13 @@ def main():
     group_input_combine.add_argument("--in_tsv", nargs='+', help="List of input tsv file(s)")
     group_input_combine.add_argument("--in_tsv_list", help="Path to a text file containing paths to input tsv files, one per line")
     parser_combine.add_argument("--out_tsv", type=str, default="combined.tsv", help="Path to output tsv file name (default: combined.tsv)")
-    parser_combine.add_argument("--minreads", type=float, default=50, help="Minimum reads across samples to include taxa (default: 50)")
+    parser_combine.add_argument("--minreads", type=float, default=50, help="Minimum reads across samples to include a taxon (default: 50)")
     parser_combine.add_argument(
         "--include",
         nargs="*",
-        choices=["Duplicity","MeanDust","Damage+1","Damage-1","MeanLength","ANI","AvgReadGC","AvgRefGC","UniqueKmers","RatioDupKmers","TotalAlignments","UnaggregatedReads","none"],
+        choices=["all","Duplicity","MeanDust","Damage+1","Damage-1","Damage+1_CpG","Damage+1_nonCpG","MeanLength","ANI","AvgReadGC","AvgRefGC","UniqueKmers","UniqKmersPerRead","TotalAlignments","UnaggregatedReads","none"],
         default=["none"],
-        help="Metrics to include in output file. Specify any combination of bamdam compute output tsv columns. TaxNodeID, TaxName, TotalReads and taxpath are always included. (default: none)",
+        help="Extra metrics to include in output file. Specify any combination of columns in your bamdam compute output files. TaxNodeID, TaxName, TotalReads, Duplicity, MeanDust, Damage+1 and taxpath are always included. (default: none)",
     )
     parser_combine.set_defaults(func=combine.run_combine)
 
@@ -164,7 +169,7 @@ def main():
         sortorder = utils.get_sorting_order(args.in_bam)
         if sortorder != "queryname":
             print("Error: Your bam file does not appear to be read-sorted. Please try again with it once it has been read-sorted (samtools sort -n), which should be the same order as your lca file. \n")
-            exit(-1) 
+            sys.exit(1) 
 
     if hasattr(args, 'in_tsv') and hasattr(args, 'in_tsv_list') and args.in_tsv is not None and args.in_tsv_list is not None:
         raise ValueError("You cannot specify both --in_tsv and --in_tsv_list at the same time. Use one or the other.")
@@ -176,9 +181,9 @@ def main():
     if hasattr(args, 'minreads') and args.minreads < 0:
         raise ValueError("Min reads must be a non-negative integer.")
     if hasattr(args, 'include'):
-        invalid_metrics = set(args.include) - {'Duplicity','MeanDust','Damage+1','Damage-1','MeanLength','ANI','AvgReadGC','AvgRefGC','UniqueKmers','RatioDupKmers','TotalAlignments','UnaggregatedReads','none'}
+        invalid_metrics = set(args.include) - {'all','Duplicity','MeanDust','Damage+1','Damage-1','MeanLength','ANI','AvgReadGC','AvgRefGC','UniqueKmers','UniqKmersPerRead','TotalAlignments','UnaggregatedReads','none'}
         if invalid_metrics:
-            raise ValueError(f"Invalid metrics in --include: {', '.join(invalid_metrics)}. Allowed values are: 'Duplicity','MeanDust','Damage+1','Damage-1','MeanLength','ANI','AvgReadGC','AvgRefGC','UniqueKmers','RatioDupKmers','TotalAlignments',or 'UnaggregatedReads'.")
+            raise ValueError(f"Invalid metrics in --include: {', '.join(invalid_metrics)}. Allowed values are: 'Duplicity','MeanDust','Damage+1','Damage-1','MeanLength','ANI','AvgReadGC','AvgRefGC','UniqueKmers','UniqKmersPerRead','TotalAlignments',or 'UnaggregatedReads'.")
 
     if args.command == 'shrink':
         print("Hello! You are running bamdam shrink with the following arguments:")
@@ -190,6 +195,14 @@ def main():
         print(f"mincount: {args.mincount}")
         print(f"upto: {args.upto}")
         print(f"minsim: {args.minsim}")
+        if hasattr(args, 'dust_max'): # well don't print it if it's not a default 
+            try:
+                dust_max = float(args.dust_max)
+                if dust_max != 0:
+                    print(f"dust_max: {dust_max}")
+            except (ValueError, TypeError):
+                print("Error: dust_max must be a number bigger than 0")
+                sys.exit(1)
         if hasattr(args, 'exclude_tax_file') and args.exclude_tax_file:
             print(f"exclude_tax: loaded from {args.exclude_tax_file}")
         if hasattr(args, 'exclude_tax') and args.exclude_tax:
@@ -206,6 +219,8 @@ def main():
         print(f"stranded: {args.stranded}")
         print(f"k: {args.k}")
         print(f"upto: {args.upto}")
+        if hasattr(args, 'udg') and args.udg:
+            print(f"UDG mode on")
         if hasattr(args, 'plotdupdust'):
             print(f"printdupdust: {args.plotdupdust}")
 
@@ -243,7 +258,6 @@ def main():
         print(f"Aggregate to: {args.aggregate_to}")    
         if hasattr(args, 'maxdamage') and args.maxdamage is not None:
             print(f"Max damage value for colour scale: {args.maxdamage}")
-
 
     if hasattr(args, 'func'):
         args.func(args)
