@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0](https://github.com/bdesanctis/bamdam/compare/v0.3.0...v0.4.0) (2025-11-18)
+
+
+### Dependencies
+
+* remove pysam from both dev and main deps ([ebaf991](https://github.com/bdesanctis/bamdam/commit/ebaf991962b95507a9bf4aefbab54ff56e8eb2b9))
+
+
+### Miscellaneous Chores
+
+* release 0.4.0 ([5f9ec9e](https://github.com/bdesanctis/bamdam/commit/5f9ec9ed073923ad9f7c9c7067c49f09c6d1b9a0))
+
 ## [0.3.0](https://github.com/bdesanctis/bamdam/compare/v0.2.2...v0.3.0) (2025-09-25)
 
 
