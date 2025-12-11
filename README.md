@@ -43,6 +43,7 @@ bamdam compute --in_bam A2.bam --in_lca A2.lca --out_tsv A_tsv.txt --out_subs A_
   - [krona](#krona)
 - [Tutorial](#tutorial)
 - [Contributing](#contributing)
+- [Citation](#citation)
 
 ## <a name="description"></a>Description
 
@@ -382,3 +383,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 Bamdam was written by Bianca De Sanctis in 2025. I am happy to provide assistance; please contact bddesanctis@gmail.com.
 
+## Citation
+
+De Sanctis, B., Mirchandani, C., Dong, H. et al. Bamdam: a post-mapping authentication toolkit for ancient metagenomics. Genome Biology 26, 413 (2025). https://doi.org/10.1186/s13059-025-03879-x
