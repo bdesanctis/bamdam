@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/bdesanctis/bamdam/compare/v0.4.2...v0.4.3) (2026-01-02)
+
+
+### Bug Fixes
+
+* fixed bug in extract only_top_alignment causing output bam contig names to be sometimes incorrectly relinked to the smaller header ([de3d25e](https://github.com/bdesanctis/bamdam/commit/de3d25e1d83c3925eb2269559b32f3d8efcb0d57))
+
 ## [0.4.2](https://github.com/bdesanctis/bamdam/compare/v0.4.1...v0.4.2) (2025-11-18)
 
 
