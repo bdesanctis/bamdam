@@ -142,7 +142,8 @@ def extract_reads(in_lca, in_bam, out_bam, tax, only_top_ref = False, only_top_a
                                     print(f"Error: No best alignment found for read {current_read_name}")
                                     sys.exit(1) # this should not happen
                                 if current_best_alignment.reference_id >= 0: 
-                                    current_best_alignment.reference_id = ref_name_to_id[ref_name] 
+                                    write_ref_name = bam_reader_again.get_reference_name(current_best_alignment.reference_id)
+                                    current_best_alignment.reference_id = ref_name_to_id[write_ref_name]
                                     # relink the reference_id to match the new header
                                 else:
                                     print(f"Error: An alignment doesn't have a reference, for read name: {current_read_name}")
@@ -174,7 +175,8 @@ def extract_reads(in_lca, in_bam, out_bam, tax, only_top_ref = False, only_top_a
                     print(f"Error: No best alignment found for read {current_read_name}")
                     sys.exit(1) # this should not happen
                 if current_best_alignment.reference_id >= 0: 
-                    current_best_alignment.reference_id = ref_name_to_id[relevant_ref_name] 
+                    write_ref_name = bam_reader_again.get_reference_name(current_best_alignment.reference_id)
+                    current_best_alignment.reference_id = ref_name_to_id[write_ref_name]
                     # relink the reference_id to match the new header
                 else:
                     print(f"Error: An alignment doesn't have a reference, for read name: {current_read_name}")
