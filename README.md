@@ -58,7 +58,7 @@ Bamdam reads and writes bams line-by-line, so it shouldn't need too much RAM (us
 
 We highly recommend running the [tutorial](#tutorial) first. Example data is provided.
 
-If you find yourself asking "why can't bamdam do my specific ancient DNA task?", such as per-contig stats, see [bamdam-extras](https://github.com/bdesanctis/bamdam-extras/).
+If you have read this and still find yourself asking "why can't bamdam do my specific ancient DNA task?", see [bamdam-extras](https://github.com/bdesanctis/bamdam-extras/).
 
 ![bamdam workflow figure](docs/assets/workflowfigure.jpg "bamdam workflow")
 
