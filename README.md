@@ -100,7 +100,7 @@ before running bamdam shrink, which would speed it up. Once the new lca file is 
 
 Bamdam shrink will also optionally annotate the new bam file with PMD scores as in PMDTools (in the DS:Z field) (--annotate_pmd), but PMD score annotation will roughly double the amount of time this command takes. PMD scores are from [Skoglund et al. 2014](https://doi.org/10.1073/pnas.131893411). 
 
-Input bam files must be sorted by read order (samtools sort -n). Merging read-sorted bam files will lose the sort order, even though the resulting bam file will still claim to be read-sorted in its header, leading to a silent ngsLCA error and incorrect bamdam results. To avoid this, please read-sort bam files immediately before ngsLCA.
+As with ngsLCA, input bam files must be sorted by read order (samtools sort -n), and read-sorting must be performed after any bam file merging. Merging read-sorted bam files will lose the sort order, even though the resulting bam file will still claim to be read-sorted in its header, leading to a silent ngsLCA error and incorrect bamdam results. To avoid this, please read-sort bam files immediately before ngsLCA. Also, at the moment, bamdam requires paired-end reads to be merged (before mapping), as is typical in ancient DNA.
 
 ### <a name="compute"></a>bamdam compute
 
