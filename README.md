@@ -58,8 +58,6 @@ Bamdam reads and writes bams line-by-line, so it shouldn't need too much RAM (us
 
 We highly recommend running the [tutorial](#tutorial) first. Example data is provided.
 
-If you have read this and still find yourself asking "why can't bamdam do my specific ancient DNA task?", see [bamdam-extras](https://github.com/bdesanctis/bamdam-extras/).
-
 ![bamdam workflow figure](docs/assets/workflowfigure.jpg "bamdam workflow")
 
 ## <a name="use"></a>Usage
@@ -100,7 +98,7 @@ before running bamdam shrink, which would speed it up. Once the new lca file is 
 
 Bamdam shrink will also optionally annotate the new bam file with PMD scores as in PMDTools (in the DS:Z field) (--annotate_pmd), but PMD score annotation will roughly double the amount of time this command takes. PMD scores are from [Skoglund et al. 2014](https://doi.org/10.1073/pnas.131893411). 
 
-As with ngsLCA, input bam files must be sorted by read order (samtools sort -n), and read-sorting must be performed after any bam file merging. Merging read-sorted bam files will lose the sort order, even though the resulting bam file will still claim to be read-sorted in its header, leading to a silent ngsLCA error and incorrect bamdam results. To avoid this, please read-sort bam files immediately before ngsLCA. Also, at the moment, bamdam requires paired-end reads to be merged (before mapping), as is typical in ancient DNA.
+As with ngsLCA, input bam files must be sorted by read order (samtools sort -n), and read-sorting must be performed after any bam file merging. Merging read-sorted bam files will lose the sort order, even though the resulting bam file will still claim to be read-sorted in its header, leading to a silent ngsLCA error and incorrect bamdam results. To avoid this, please read-sort bam files immediately before ngsLCA. Also, at the moment, bamdam requires paired-end reads to be merged (before mapping), as is typical in ancient DNA. Lastly, bam files must contain MD tags, which can be added with samtools calmd if not present.
 
 ### <a name="compute"></a>bamdam compute
 
